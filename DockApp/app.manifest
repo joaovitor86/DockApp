@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+    Manifesto de configuração do aplicativo DockApp.
+
+    Este arquivo informa ao Windows como o aplicativo deve
+    ser tratado em relação à escala de DPI (Dots Per Inch).
+
+    A configuração de DPI é especialmente importante para o DockApp,
+    pois a aplicação trabalha diretamente com posicionamento e tamanho
+    de janelas na tela.
+-->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+
+	<application xmlns="urn:schemas-microsoft-com:asm.v3">
+
+		<windowsSettings>
+
+			<!--
+          Define o nível de conscientização de DPI do aplicativo.
+
+          PerMonitorV2 significa que o aplicativo é considerado
+          compatível com DPI por monitor.
+
+          Isso permite que o Windows adapte corretamente a aplicação
+          quando ela estiver sendo exibida em monitores com diferentes
+          fatores de escala.
+
+          Exemplo:
+          - Monitor 1: 100% de escala
+          - Monitor 2: 150% de escala
+
+          O DockApp poderá receber as dimensões apropriadas para
+          cada monitor em vez de utilizar uma única escala global.
+      -->
+			<dpiAwareness
+			  xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">
+				PerMonitorV2
+			</dpiAwareness>
+
+			<!--
+          Declara que o aplicativo possui suporte à conscientização
+          de DPI por monitor.
+
+          A configuração "true/pm" indica ao Windows que o aplicativo
+          é DPI-aware e utiliza o modo Per-Monitor.
+
+          Esta configuração pertence ao namespace mais antigo de
+          configurações de DPI e é mantida juntamente com
+          PerMonitorV2 para compatibilidade.
+      -->
+			<dpiAware
+			  xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">
+				true/pm
+			</dpiAware>
+
+		</windowsSettings>
+
+	</application>
+
+</assembly>

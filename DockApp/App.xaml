@@ -1,0 +1,11 @@
+﻿<!--
+    Arquivo principal de definição da aplicação WPF.
+
+    O App.xaml representa a aplicação como um todo e pode ser usado
+    para definir recursos globais, estilos, temas, templates,
+    conversores e outros recursos compartilhados entre as janelas
+    do DockApp.
+-->
+<Application x:Class="DockApp.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" />
