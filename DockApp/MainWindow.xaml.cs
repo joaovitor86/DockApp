@@ -15,6 +15,10 @@ using System.Windows;
 // Importa controles WPF, como StackPanel e ItemsControl.
 using System.Windows.Controls;
 
+// Importa Popup e PlacementMode, utilizados pelos balões de nome
+// e de erro exibidos sobre os ícones.
+using System.Windows.Controls.Primitives;
+
 // Importa recursos relacionados a entrada do usuário,
 // incluindo MouseButtonEventArgs e MouseEventArgs.
 using System.Windows.Input;
@@ -46,12 +50,28 @@ using Color = System.Windows.Media.Color;
 
 // Define explicitamente ColorConverter como o conversor de cores do WPF.
 using ColorConverter = System.Windows.Media.ColorConverter;
-using MouseEventArgs = System.Windows.Input.MouseEventArgs;
-
 
 // Define explicitamente Orientation como o Orientation dos controles WPF.
 using Orientation = System.Windows.Controls.Orientation;
+
+// Define explicitamente Point como o Point do WPF.
+//
+// Necessário porque o projeto também referencia Windows Forms
+// (para o NotifyIcon e o ColorDialog), e System.Drawing.Point
+// tem o mesmo nome.
 using Point = System.Windows.Point;
+
+// Define explicitamente Brushes como os Brushes do WPF (Media),
+// pelo mesmo motivo acima (existe System.Drawing.Brushes).
+using Brushes = System.Windows.Media.Brushes;
+
+// Define explicitamente MouseEventArgs como o MouseEventArgs
+// de entrada do WPF, e não o de Windows Forms.
+using MouseEventArgs = System.Windows.Input.MouseEventArgs;
+
+// Define explicitamente HorizontalAlignment como o HorizontalAlignment
+// do WPF, e não o de Windows Forms.
+using HorizontalAlignment = System.Windows.HorizontalAlignment;
 
 namespace DockApp;
 
@@ -70,6 +90,8 @@ namespace DockApp;
 /// - Alteração da orientação dos ícones.
 /// - Execução dos atalhos.
 /// - Animações dos ícones (hover e lançamento).
+/// - Tooltip com o nome do atalho ao passar o mouse, estilo macOS.
+/// - Feedback visual quando um atalho falha ao abrir.
 /// - Abertura das configurações.
 /// - Ocultação e reexibição da Dock.
 ///
@@ -136,6 +158,22 @@ public partial class MainWindow : Window
     /// válida é configurada.
     /// </summary>
     private FolderWatcherService? _folderWatcher;
+
+    /// <summary>
+    /// Popup atualmente aberto exibindo o nome do atalho sob o mouse.
+    ///
+    /// É nullable porque normalmente nenhum tooltip está visível.
+    /// </summary>
+    private Popup? _nameTooltipPopup;
+
+    /// <summary>
+    /// Timer responsável pelo pequeno atraso entre o mouse entrar
+    /// em um ícone e o tooltip de nome realmente aparecer.
+    ///
+    /// Evita que o balão pisque ao passar o mouse rapidamente
+    /// por vários ícones em sequência.
+    /// </summary>
+    private System.Windows.Threading.DispatcherTimer? _nameTooltipDelayTimer;
 
     /// <summary>
     /// Inicializa uma nova instância da janela principal.
@@ -627,7 +665,8 @@ public partial class MainWindow : Window
     /// executar seu TargetPath utilizando o Shell do Windows.
     ///
     /// Após a execução bem-sucedida, reproduz a animação
-    /// de "quique" do ícone.
+    /// de "quique" do ícone. Caso a execução falhe, exibe um
+    /// balão de erro estilo macOS ancorado ao ícone.
     /// </summary>
     /// <param name="sender">
     /// Elemento visual que recebeu o clique.
@@ -673,12 +712,13 @@ public partial class MainWindow : Window
         }
         catch
         {
-            // Falha ao abrir o destino.
+            // Falha ao abrir o destino (ex.: executável foi movido
+            // ou removido, falta o launcher necessário, sem
+            // permissão, etc.).
             //
-            // TODO:
-            // Implementar posteriormente um feedback visual
-            // informando ao usuário que o aplicativo/atalho
-            // não pôde ser aberto.
+            // Em vez de falhar silenciosamente, exibe um balão
+            // de erro estilo macOS ancorado ao ícone que falhou.
+            ShowErrorTooltip(element);
         }
     }
 
@@ -846,11 +886,342 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// Constrói e exibe um balão flutuante no estilo dos tooltips
+    /// nativos do macOS, ancorado a um elemento visual através
+    /// de um Popup:
+    ///
+    /// - Fundo escuro semitransparente, cantos arredondados.
+    /// - Texto branco curto.
+    /// - Uma pequena "seta" apontando para o elemento ancorado.
+    /// - Entrada com fade-in + leve deslize.
+    ///
+    /// Este método apenas CRIA e ABRE o balão (com a animação de
+    /// entrada); ele não o fecha automaticamente. Cada chamador
+    /// decide quando fechar o Popup retornado (por exemplo, após
+    /// um tempo fixo, ou quando o mouse sai do elemento), utilizando
+    /// <see cref="FadeOutAndClose"/>.
+    /// </summary>
+    /// <param name="anchor">
+    /// Elemento visual ao qual o balão será ancorado.
+    /// </param>
+    /// <param name="text">
+    /// Texto exibido dentro do balão.
+    /// </param>
+    /// <param name="appearsBelow">
+    /// Quando <c>true</c>, o balão nasce abaixo do elemento ancorado
+    /// (com a seta apontando para cima); quando <c>false</c>, nasce
+    /// acima (com a seta apontando para baixo).
+    /// </param>
+    /// <returns>
+    /// O Popup já criado, aberto e com a animação de entrada
+    /// iniciada.
+    /// </returns>
+    private Popup CreateStyledPopup(
+        FrameworkElement anchor,
+        string text,
+        bool appearsBelow)
+    {
+        // Cor de fundo escura e semitransparente utilizada
+        // tanto pelo corpo do balão quanto pela "seta".
+        var bubbleBrush =
+            new SolidColorBrush(
+                Color.FromArgb(0xEB, 0x1C, 0x1C, 0x1E));
+
+        // Cria a "seta" do balão: um pequeno quadrado rotacionado
+        // 45 graus, com uma margem negativa que o sobrepõe
+        // ligeiramente ao corpo do balão, dando a impressão
+        // de uma ponta única e contínua.
+        var arrow =
+            new Border
+            {
+                Width = 10,
+                Height = 10,
+                Background = bubbleBrush,
+                CornerRadius = new CornerRadius(2),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                RenderTransform = new RotateTransform(45),
+                Margin =
+                    appearsBelow
+                        ? new Thickness(0, 0, 0, -5)
+                        : new Thickness(0, -5, 0, 0)
+            };
+
+        // Cria o corpo do balão.
+        var bubble =
+            new Border
+            {
+                Background = bubbleBrush,
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(12, 6, 12, 6),
+                Child =
+                    new TextBlock
+                    {
+                        Text = text,
+                        Foreground = Brushes.White,
+                        FontSize = 13
+                    }
+            };
+
+        // Organiza a seta e o corpo do balão na ordem visual correta,
+        // dependendo de qual lado o balão vai aparecer.
+        var content =
+            new StackPanel
+            {
+                HorizontalAlignment = HorizontalAlignment.Center
+            };
+
+        if (appearsBelow)
+        {
+            // Balão abaixo do elemento: a seta fica no topo,
+            // apontando para cima, em direção ao elemento.
+            content.Children.Add(arrow);
+            content.Children.Add(bubble);
+        }
+        else
+        {
+            // Balão acima do elemento: a seta fica embaixo,
+            // apontando para baixo, em direção ao elemento.
+            content.Children.Add(bubble);
+            content.Children.Add(arrow);
+        }
+
+        // Prepara a transformação utilizada pela animação de
+        // entrada: o balão começa ligeiramente deslocado
+        // verticalmente e desliza até sua posição final.
+        var slideTransform =
+            new TranslateTransform(
+                0,
+                appearsBelow ? -4 : 4);
+
+        content.RenderTransform = slideTransform;
+
+        // Começa totalmente transparente para a animação de fade-in.
+        content.Opacity = 0;
+
+        // Cria o Popup que hospeda o balão, ancorado ao elemento
+        // informado.
+        //
+        // AllowsTransparency permite que o fundo semitransparente
+        // do balão seja exibido corretamente sobre a área
+        // de trabalho.
+        var popup =
+            new Popup
+            {
+                PlacementTarget = anchor,
+                Placement =
+                    appearsBelow
+                        ? PlacementMode.Bottom
+                        : PlacementMode.Top,
+                AllowsTransparency = true,
+                StaysOpen = true,
+                PopupAnimation = PopupAnimation.None,
+                VerticalOffset = appearsBelow ? 6 : -6,
+                Child = content,
+                IsOpen = true
+            };
+
+        // Anima a entrada do balão: fade-in combinado com um leve
+        // deslize até a posição final, dando uma sensação suave
+        // de "aparecer", em vez de surgir abruptamente.
+        content.BeginAnimation(
+            UIElement.OpacityProperty,
+            new DoubleAnimation
+            {
+                To = 1,
+                Duration = TimeSpan.FromMilliseconds(120),
+                EasingFunction =
+                    new QuadraticEase
+                    {
+                        EasingMode = EasingMode.EaseOut
+                    }
+            });
+
+        slideTransform.BeginAnimation(
+            TranslateTransform.YProperty,
+            new DoubleAnimation
+            {
+                To = 0,
+                Duration = TimeSpan.FromMilliseconds(120),
+                EasingFunction =
+                    new QuadraticEase
+                    {
+                        EasingMode = EasingMode.EaseOut
+                    }
+            });
+
+        return popup;
+    }
+
+    /// <summary>
+    /// Anima o fechamento de um balão criado por
+    /// <see cref="CreateStyledPopup"/>: aplica um fade-out
+    /// ao conteúdo e, somente depois que a animação termina,
+    /// fecha o Popup definitivamente (IsOpen = false).
+    /// </summary>
+    /// <param name="popup">
+    /// Popup a ser fechado.
+    /// </param>
+    /// <param name="milliseconds">
+    /// Duração da animação de fade-out, em milissegundos.
+    /// </param>
+    private static void FadeOutAndClose(
+        Popup popup,
+        double milliseconds)
+    {
+        var fadeOut =
+            new DoubleAnimation
+            {
+                To = 0,
+                Duration = TimeSpan.FromMilliseconds(milliseconds)
+            };
+
+        // Somente depois que o fade-out terminar,
+        // o Popup é efetivamente fechado.
+        fadeOut.Completed += (_, _) => popup.IsOpen = false;
+
+        popup.Child.BeginAnimation(
+            UIElement.OpacityProperty,
+            fadeOut);
+    }
+
+    /// <summary>
+    /// Exibe um balão de erro ancorado ao ícone que falhou ao abrir,
+    /// no estilo dos tooltips nativos do macOS (ver
+    /// <see cref="CreateStyledPopup"/>).
+    ///
+    /// Diferente do tooltip de nome (que fecha quando o mouse sai
+    /// do ícone), este balão desaparece sozinho após alguns
+    /// segundos, independentemente do mouse.
+    ///
+    /// Quando a Dock está posicionada no topo da tela, o balão
+    /// nasce abaixo do ícone (para não sair da área visível);
+    /// em qualquer outra posição, nasce acima.
+    /// </summary>
+    /// <param name="icon">
+    /// Elemento visual do ícone que falhou ao abrir.
+    /// </param>
+    private void ShowErrorTooltip(FrameworkElement icon)
+    {
+        // Decide se o balão nasce abaixo ou acima do ícone.
+        var appearsBelow =
+            _settings.Position == DockPosition.Top;
+
+        // Cria e abre o balão, com o texto genérico do erro.
+        //
+        // Propositalmente não exibe a mensagem técnica da exceção:
+        // o objetivo é um aviso curto e direto, no mesmo tom
+        // dos avisos nativos do macOS.
+        var popup =
+            CreateStyledPopup(
+                icon,
+                "Não foi possível abrir",
+                appearsBelow);
+
+        // Agenda o desaparecimento automático do balão depois
+        // de alguns segundos, sem exigir nenhuma ação do usuário.
+        var closeTimer =
+            new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(2500)
+            };
+
+        closeTimer.Tick += (_, _) =>
+        {
+            closeTimer.Stop();
+
+            FadeOutAndClose(popup, 150);
+        };
+
+        closeTimer.Start();
+    }
+
+    /// <summary>
+    /// Agenda a exibição do tooltip com o nome do atalho, após
+    /// um pequeno atraso de hover.
+    ///
+    /// O atraso evita que o balão pisque ao passar o mouse
+    /// rapidamente por vários ícones em sequência — o balão só
+    /// aparece de fato quando o mouse permanece parado sobre
+    /// o ícone por um instante.
+    ///
+    /// Qualquer atraso pendente de um ícone anterior é cancelado
+    /// antes de agendar o novo.
+    /// </summary>
+    /// <param name="icon">
+    /// Elemento visual do ícone sob o mouse.
+    /// </param>
+    /// <param name="name">
+    /// Nome do atalho a ser exibido no balão.
+    /// </param>
+    private void ScheduleNameTooltip(FrameworkElement icon, string name)
+    {
+        // Cancela qualquer atraso pendente de um hover anterior.
+        CancelPendingNameTooltip();
+
+        _nameTooltipDelayTimer =
+            new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(350)
+            };
+
+        _nameTooltipDelayTimer.Tick += (_, _) =>
+        {
+            _nameTooltipDelayTimer?.Stop();
+            _nameTooltipDelayTimer = null;
+
+            // Decide se o balão nasce abaixo ou acima do ícone,
+            // seguindo a mesma regra do balão de erro.
+            var appearsBelow =
+                _settings.Position == DockPosition.Top;
+
+            _nameTooltipPopup =
+                CreateStyledPopup(icon, name, appearsBelow);
+        };
+
+        _nameTooltipDelayTimer.Start();
+    }
+
+    /// <summary>
+    /// Cancela o atraso pendente do tooltip de nome, caso exista.
+    ///
+    /// Utilizado quando o mouse sai do ícone antes do atraso
+    /// terminar, evitando que o balão apareça depois que o mouse
+    /// já foi embora.
+    /// </summary>
+    private void CancelPendingNameTooltip()
+    {
+        if (_nameTooltipDelayTimer == null)
+            return;
+
+        _nameTooltipDelayTimer.Stop();
+        _nameTooltipDelayTimer = null;
+    }
+
+    /// <summary>
+    /// Fecha o tooltip de nome atualmente visível, caso exista,
+    /// com uma animação rápida de fade-out.
+    /// </summary>
+    private void CloseNameTooltip()
+    {
+        if (_nameTooltipPopup == null)
+            return;
+
+        var popup = _nameTooltipPopup;
+        _nameTooltipPopup = null;
+
+        // Fade-out mais rápido que o do balão de erro: o tooltip
+        // de nome deve sumir de forma responsiva assim que o mouse
+        // sai do ícone.
+        FadeOutAndClose(popup, 100);
+    }
+
+    /// <summary>
     /// Executado quando o ponteiro do mouse entra sobre um ícone
     /// da Dock.
     ///
     /// Amplia o ícone suavemente até a escala configurada em
-    /// <see cref="DockSettings.HoverScale"/>.
+    /// <see cref="DockSettings.HoverScale"/> e agenda a exibição
+    /// do tooltip com o nome do atalho.
     /// </summary>
     /// <param name="sender">
     /// Elemento visual (Image) sobre o qual o mouse entrou.
@@ -863,13 +1234,25 @@ public partial class MainWindow : Window
         AnimateHoverScale(
             sender as FrameworkElement,
             _settings.HoverScale);
+
+        // Agenda o tooltip de nome, caso o elemento realmente
+        // represente um DockItem válido.
+        if (sender is FrameworkElement
+            {
+                Tag: DockItem item
+            } element)
+        {
+            ScheduleNameTooltip(element, item.Name);
+        }
     }
 
     /// <summary>
     /// Executado quando o ponteiro do mouse sai de um ícone
     /// da Dock.
     ///
-    /// Retorna o ícone suavemente à escala original (1.0).
+    /// Retorna o ícone suavemente à escala original (1.0) e
+    /// cancela/fecha o tooltip de nome, caso esteja pendente
+    /// ou visível.
     /// </summary>
     /// <param name="sender">
     /// Elemento visual (Image) do qual o mouse saiu.
@@ -882,6 +1265,11 @@ public partial class MainWindow : Window
         AnimateHoverScale(
             sender as FrameworkElement,
             1.0);
+
+        // Cancela um atraso pendente (o tooltip ainda não apareceu)
+        // e fecha o tooltip caso já esteja visível.
+        CancelPendingNameTooltip();
+        CloseNameTooltip();
     }
 
     /// <summary>

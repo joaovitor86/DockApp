@@ -70,6 +70,16 @@ public static class ShortcutLoader
             $"[DockApp] {files.Count} arquivo(s) encontrados na pasta."
         );
 
+        // Cria uma única instância do Shell do Windows (COM) para
+        // ser reutilizada por todos os arquivos .lnk desta varredura.
+        //
+        // Criar um WshShell é uma operação de interoperabilidade COM
+        // com um custo perceptível quando repetida muitas vezes.
+        // Antes, uma nova instância era criada a cada arquivo .lnk
+        // processado; agora apenas uma instância é criada por chamada
+        // a LoadFolder(), independentemente da quantidade de atalhos.
+        var shell = new WshShell();
+
         // Processa cada arquivo individualmente.
         foreach (var file in files)
         {
@@ -83,12 +93,12 @@ public static class ShortcutLoader
             // Seleciona o método responsável por interpretar
             // o arquivo de acordo com sua extensão.
             //
-            // .lnk → ReadLnk()
+            // .lnk → ReadLnk() (reaproveitando o WshShell criado acima)
             // .url → ReadUrl()
             // qualquer outra extensão → null
             var item = ext switch
             {
-                ".lnk" => ReadLnk(file),
+                ".lnk" => ReadLnk(file, shell),
                 ".url" => ReadUrl(file),
                 _ => null
             };
@@ -143,20 +153,19 @@ public static class ShortcutLoader
     /// <param name="path">
     /// Caminho completo do arquivo .lnk.
     /// </param>
+    /// <param name="shell">
+    /// Instância do Shell do Windows (COM) reutilizada entre todos
+    /// os arquivos .lnk processados por <see cref="LoadFolder"/>,
+    /// em vez de criar uma nova instância a cada chamada.
+    /// </param>
     /// <returns>
     /// Um <see cref="DockItem"/> quando o atalho puder ser lido;
     /// caso contrário, <c>null</c>.
     /// </returns>
-    private static DockItem? ReadLnk(string path)
+    private static DockItem? ReadLnk(string path, WshShell shell)
     {
         try
         {
-            // Cria uma instância do objeto Shell do Windows.
-            //
-            // Esse objeto permite acessar as propriedades internas
-            // de atalhos .lnk.
-            var shell = new WshShell();
-
             // Abre o arquivo .lnk e o interpreta como IWshShortcut.
             var link = (IWshShortcut)shell.CreateShortcut(path);
 
