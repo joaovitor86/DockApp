@@ -16,7 +16,7 @@ using System.Windows;
 using System.Windows.Controls;
 
 // Importa recursos relacionados a entrada do usuário,
-// incluindo MouseButtonEventArgs.
+// incluindo MouseButtonEventArgs e MouseEventArgs.
 using System.Windows.Input;
 
 // Importa recursos gráficos do WPF.
@@ -24,6 +24,10 @@ using System.Windows.Media;
 
 // Importa recursos de animação do WPF.
 using System.Windows.Media.Animation;
+
+// Importa recursos de efeitos visuais do WPF, como DropShadowEffect,
+// utilizado para aplicar a sombra configurável da Dock.
+using System.Windows.Media.Effects;
 
 // Importa os modelos utilizados pelo DockApp.
 using DockApp.Models;
@@ -42,9 +46,12 @@ using Color = System.Windows.Media.Color;
 
 // Define explicitamente ColorConverter como o conversor de cores do WPF.
 using ColorConverter = System.Windows.Media.ColorConverter;
+using MouseEventArgs = System.Windows.Input.MouseEventArgs;
+
 
 // Define explicitamente Orientation como o Orientation dos controles WPF.
 using Orientation = System.Windows.Controls.Orientation;
+using Point = System.Windows.Point;
 
 namespace DockApp;
 
@@ -57,11 +64,12 @@ namespace DockApp;
 /// - Carregamento das configurações.
 /// - Carregamento dos atalhos.
 /// - Monitoramento da pasta de atalhos.
-/// - Aplicação das configurações visuais.
+/// - Aplicação das configurações visuais (cor/degradê, borda, sombra,
+///   espaçamento, cantos e tamanho dos ícones).
 /// - Posicionamento da Dock na tela.
 /// - Alteração da orientação dos ícones.
 /// - Execução dos atalhos.
-/// - Animações dos ícones.
+/// - Animações dos ícones (hover e lançamento).
 /// - Abertura das configurações.
 /// - Ocultação e reexibição da Dock.
 ///
@@ -155,8 +163,8 @@ public partial class MainWindow : Window
     ///
     /// O processo consiste em:
     /// 1. Carregar as configurações salvas.
-    /// 2. Aplicar a aparência.
-    /// 3. Aplicar a orientação dos ícones.
+    /// 2. Aplicar a aparência (cor/degradê, borda, sombra, padding).
+    /// 3. Aplicar a orientação e o espaçamento dos ícones.
     /// 4. Carregar os atalhos.
     /// 5. Configurar o monitoramento da pasta.
     /// 6. Reposicionar a janela depois que o layout estiver pronto.
@@ -166,10 +174,12 @@ public partial class MainWindow : Window
         // Carrega as configurações persistidas pelo aplicativo.
         _settings = ConfigurationService.Load();
 
-        // Aplica cor, opacidade, bordas e tamanho dos ícones.
+        // Aplica cor/degradê, opacidade, borda, sombra, padding,
+        // raio das bordas e tamanho dos ícones.
         ApplyAppearance();
 
-        // Ajusta a orientação dos itens conforme a posição da Dock.
+        // Ajusta a orientação e o espaçamento dos itens conforme
+        // a posição da Dock e o IconSpacing configurado.
         ApplyLayout();
 
         // Carrega os atalhos existentes na pasta configurada.
@@ -204,13 +214,18 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Ajusta a orientação da Dock de acordo com sua posição.
+    /// Ajusta a orientação e o espaçamento dos ícones da Dock.
     ///
     /// Dock na esquerda ou direita:
     /// - Ícones ficam organizados verticalmente.
     ///
     /// Dock em cima ou embaixo:
     /// - Ícones ficam organizados horizontalmente.
+    ///
+    /// Além da orientação, este método também aplica o espaçamento
+    /// configurado em <see cref="DockSettings.IconSpacing"/> através
+    /// de um ItemContainerStyle, evitando que o valor fique fixo
+    /// diretamente no DataTemplate do XAML.
     /// </summary>
     private void ApplyLayout()
     {
@@ -237,8 +252,29 @@ public partial class MainWindow : Window
         IconsPanel.ItemsPanel =
             new ItemsPanelTemplate(factory);
 
+        // Cria um estilo aplicado ao container gerado para cada item.
+        //
+        // Como o ItemsControl não possui seleção (ao contrário de
+        // ListBox/ComboBox), o container gerado para cada item de
+        // ItemsSource é um ContentPresenter.
+        //
+        // O espaçamento configurado em IconSpacing é dividido pela
+        // metade e aplicado como margem uniforme: dessa forma, dois
+        // ícones vizinhos ficam separados exatamente pela distância
+        // configurada, sem depender de um valor fixo no DataTemplate.
+        var itemContainerStyle =
+            new Style(typeof(ContentPresenter));
+
+        itemContainerStyle.Setters.Add(
+            new Setter(
+                FrameworkElement.MarginProperty,
+                new Thickness(_settings.IconSpacing / 2)));
+
+        IconsPanel.ItemContainerStyle = itemContainerStyle;
+
         // Garante que a janela seja reposicionada depois que
-        // a alteração da orientação modificar o tamanho do conteúdo.
+        // a alteração da orientação/espaçamento modificar o tamanho
+        // do conteúdo.
         Dispatcher.BeginInvoke(PositionWindow);
     }
 
@@ -290,43 +326,88 @@ public partial class MainWindow : Window
     /// Aplica as configurações visuais da Dock.
     ///
     /// São aplicados:
-    /// - Cor de fundo.
+    /// - Cor de fundo (sólida ou em degradê, conforme UseGradient).
     /// - Opacidade.
+    /// - Cor e espessura da borda.
     /// - Raio dos cantos.
+    /// - Sombra (quando habilitada).
+    /// - Espaçamento interno (padding horizontal/vertical).
     /// - Tamanho dos ícones.
     ///
-    /// Caso a cor configurada seja inválida, é utilizada
+    /// Caso alguma cor configurada seja inválida, é utilizada
     /// uma cor padrão escura com transparência.
     /// </summary>
     private void ApplyAppearance()
     {
+        // ============================================================
+        // FUNDO (sólido ou degradê)
+        // ============================================================
         try
         {
-            // Converte a string hexadecimal configurada
-            // em uma estrutura Color do WPF.
-            var color =
-                (Color)ColorConverter.ConvertFromString(
-                    _settings.BackgroundColor);
-
-            // Converte a opacidade de uma escala de 0-1
-            // para o formato de canal Alpha utilizado pelo Color,
-            // que varia de 0 a 255.
-            //
-            // Math.Clamp garante que o resultado fique
-            // dentro do intervalo permitido.
-            color.A =
+            // Converte a opacidade configurada (0-1) para o canal
+            // Alpha utilizado pelas cores (0-255).
+            var alpha =
                 (byte)Math.Clamp(
                     _settings.BackgroundOpacity * 255,
                     0,
                     255);
 
-            // Cria o pincel utilizado como fundo da Dock.
-            DockBorder.Background =
-                new SolidColorBrush(color);
+            if (_settings.UseGradient)
+            {
+                // Converte as duas cores configuradas para o degradê.
+                var color1 =
+                    (Color)ColorConverter.ConvertFromString(
+                        _settings.BackgroundColor);
+                color1.A = alpha;
+
+                var color2 =
+                    (Color)ColorConverter.ConvertFromString(
+                        _settings.BackgroundColor2);
+                color2.A = alpha;
+
+                // Cria um degradê horizontal (esquerda -> direita)
+                // e o rotaciona em torno do centro do elemento de
+                // acordo com o ângulo configurado.
+                //
+                // Isso faz com que 0° represente esquerda->direita,
+                // 90° represente cima->baixo, 180° direita->esquerda
+                // e 270° baixo->cima, exatamente como documentado
+                // em DockSettings.GradientAngle.
+                var gradient =
+                    new LinearGradientBrush
+                    {
+                        StartPoint = new Point(0, 0.5),
+                        EndPoint = new Point(1, 0.5),
+                        RelativeTransform =
+                            new RotateTransform(
+                                _settings.GradientAngle,
+                                0.5,
+                                0.5)
+                    };
+
+                gradient.GradientStops.Add(new GradientStop(color1, 0));
+                gradient.GradientStops.Add(new GradientStop(color2, 1));
+
+                DockBorder.Background = gradient;
+            }
+            else
+            {
+                // Converte a string hexadecimal configurada
+                // em uma estrutura Color do WPF.
+                var color =
+                    (Color)ColorConverter.ConvertFromString(
+                        _settings.BackgroundColor);
+
+                color.A = alpha;
+
+                // Cria o pincel utilizado como fundo da Dock.
+                DockBorder.Background =
+                    new SolidColorBrush(color);
+            }
         }
         catch
         {
-            // Caso a cor configurada seja inválida,
+            // Caso alguma cor configurada seja inválida,
             // utiliza uma cor padrão:
             //
             // Alpha = 0xB0
@@ -342,12 +423,75 @@ public partial class MainWindow : Window
                         0x20));
         }
 
+        // ============================================================
+        // BORDA
+        // ============================================================
+        try
+        {
+            // Converte a cor hexadecimal configurada para a borda.
+            var borderColor =
+                (Color)ColorConverter.ConvertFromString(
+                    _settings.BorderColor);
+
+            DockBorder.BorderBrush =
+                new SolidColorBrush(borderColor);
+        }
+        catch
+        {
+            // Caso a cor da borda seja inválida, utiliza um
+            // cinza escuro neutro como padrão.
+            DockBorder.BorderBrush =
+                new SolidColorBrush(
+                    Color.FromRgb(0x40, 0x40, 0x40));
+        }
+
+        // Aplica a espessura da borda configurada.
+        DockBorder.BorderThickness =
+            new Thickness(_settings.BorderThickness);
+
+        // ============================================================
+        // CANTOS E TAMANHO DOS ÍCONES
+        // ============================================================
+
         // Aplica o raio das bordas configurado pelo usuário.
         DockBorder.CornerRadius =
             new CornerRadius(_settings.CornerRadius);
 
         // Atualiza o tamanho dos ícones.
         IconSize = _settings.IconSize;
+
+        // ============================================================
+        // SOMBRA
+        // ============================================================
+
+        // Quando habilitada, aplica uma sombra projetada para baixo,
+        // dando à Dock um efeito de profundidade sobre a área
+        // de trabalho. Quando desabilitada, remove qualquer efeito
+        // aplicado anteriormente (definindo Effect como null).
+        DockBorder.Effect =
+            _settings.EnableShadow
+                ? new DropShadowEffect
+                {
+                    Color = Colors.Black,
+                    Opacity = _settings.ShadowOpacity,
+                    BlurRadius = _settings.ShadowBlur,
+                    ShadowDepth = _settings.ShadowDepth,
+                    Direction = 270
+                }
+                : null;
+
+        // ============================================================
+        // ESPAÇAMENTO INTERNO (PADDING)
+        // ============================================================
+
+        // Aplica o espaçamento interno horizontal e vertical
+        // configurado pelo usuário.
+        DockBorder.Padding =
+            new Thickness(
+                _settings.DockPaddingHorizontal,
+                _settings.DockPaddingVertical,
+                _settings.DockPaddingHorizontal,
+                _settings.DockPaddingVertical);
     }
 
     /// <summary>
@@ -539,6 +683,55 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// Garante que o TransformGroup utilizado pelo RenderTransform
+    /// de um ícone possa ser animado em código (via BeginAnimation).
+    ///
+    /// O WPF pode congelar ("Freeze") automaticamente objetos
+    /// Freezable declarados em XAML com valores puramente literais
+    /// (sem binding, sem nome), como otimização de performance —
+    /// isso acontece mesmo quando o TransformGroup está dentro de
+    /// um DataTemplate, não apenas em Style ou ResourceDictionary.
+    ///
+    /// Um objeto congelado não pode ser alvo de BeginAnimation()
+    /// chamado diretamente em código (gera InvalidOperationException).
+    ///
+    /// Este método detecta esse cenário e, quando necessário, clona
+    /// o TransformGroup (criando uma cópia independente e editável)
+    /// e o reatribui como RenderTransform apenas daquele elemento
+    /// específico. A partir daí, aquele ícone passa a ter sua
+    /// própria instância, não compartilhada e não congelada.
+    /// </summary>
+    /// <param name="element">
+    /// Elemento visual (ícone) cujo RenderTransform será garantido
+    /// como editável.
+    /// </param>
+    /// <returns>
+    /// O TransformGroup pronto para ser animado, ou <c>null</c>
+    /// caso o elemento não possua um TransformGroup como
+    /// RenderTransform.
+    /// </returns>
+    private static TransformGroup? EnsureAnimatableTransformGroup(
+        FrameworkElement? element)
+    {
+        if (element?.RenderTransform is not TransformGroup group)
+            return null;
+
+        // Se o grupo já estiver congelado, cria uma cópia editável
+        // e a atribui exclusivamente a este elemento.
+        //
+        // Chamadas futuras para este mesmo elemento não entrarão
+        // mais aqui, pois o clone já nasce "não congelado".
+        if (group.IsFrozen)
+        {
+            var clone = group.Clone();
+            element.RenderTransform = clone;
+            return clone;
+        }
+
+        return group;
+    }
+
+    /// <summary>
     /// Executa a animação de "quique" no ícone recém-aberto.
     ///
     /// O movimento é direcionado para longe da borda da tela
@@ -555,11 +748,12 @@ public partial class MainWindow : Window
     /// </param>
     private void PlayLaunchBounce(FrameworkElement element)
     {
-        // O estilo dos ícones utiliza um TransformGroup.
-        //
-        // Caso o elemento não possua esse tipo de transformação,
-        // não é possível executar a animação.
-        if (element.RenderTransform is not TransformGroup group)
+        // Garante que o TransformGroup deste ícone possa ser
+        // animado (ver EnsureAnimatableTransformGroup para detalhes
+        // sobre o congelamento automático do WPF).
+        var group = EnsureAnimatableTransformGroup(element);
+
+        if (group == null)
             return;
 
         // Procura dentro do TransformGroup a transformação
@@ -652,6 +846,111 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// Executado quando o ponteiro do mouse entra sobre um ícone
+    /// da Dock.
+    ///
+    /// Amplia o ícone suavemente até a escala configurada em
+    /// <see cref="DockSettings.HoverScale"/>.
+    /// </summary>
+    /// <param name="sender">
+    /// Elemento visual (Image) sobre o qual o mouse entrou.
+    /// </param>
+    /// <param name="e">
+    /// Argumentos do evento de mouse.
+    /// </param>
+    private void Icon_MouseEnter(object sender, MouseEventArgs e)
+    {
+        AnimateHoverScale(
+            sender as FrameworkElement,
+            _settings.HoverScale);
+    }
+
+    /// <summary>
+    /// Executado quando o ponteiro do mouse sai de um ícone
+    /// da Dock.
+    ///
+    /// Retorna o ícone suavemente à escala original (1.0).
+    /// </summary>
+    /// <param name="sender">
+    /// Elemento visual (Image) do qual o mouse saiu.
+    /// </param>
+    /// <param name="e">
+    /// Argumentos do evento de mouse.
+    /// </param>
+    private void Icon_MouseLeave(object sender, MouseEventArgs e)
+    {
+        AnimateHoverScale(
+            sender as FrameworkElement,
+            1.0);
+    }
+
+    /// <summary>
+    /// Anima a escala (ScaleX/ScaleY) de um ícone da Dock até
+    /// o valor informado.
+    ///
+    /// A escala alvo é lida em tempo real a partir de
+    /// <see cref="DockSettings.HoverScale"/> (em vez de um valor
+    /// fixo no XAML), permitindo que o usuário configure a
+    /// intensidade do efeito de hover pela janela de configurações.
+    /// </summary>
+    /// <param name="element">
+    /// Elemento visual que representa o ícone.
+    /// </param>
+    /// <param name="scale">
+    /// Escala alvo da animação (1.0 = tamanho normal).
+    /// </param>
+    private static void AnimateHoverScale(
+        FrameworkElement? element,
+        double scale)
+    {
+        // Garante que o TransformGroup deste ícone possa ser
+        // animado (ver EnsureAnimatableTransformGroup para detalhes
+        // sobre o congelamento automático do WPF).
+        var group = EnsureAnimatableTransformGroup(element);
+
+        if (group == null)
+            return;
+
+        // Procura dentro do TransformGroup a transformação
+        // responsável pela escala do elemento.
+        var scaleTransform =
+            group.Children
+                .OfType<ScaleTransform>()
+                .FirstOrDefault();
+
+        // Se não existir uma ScaleTransform,
+        // não há transformação de escala para animar.
+        if (scaleTransform == null)
+            return;
+
+        // Cria a animação de escala.
+        var animation =
+            new DoubleAnimation
+            {
+                To = scale,
+
+                Duration =
+                    TimeSpan.FromMilliseconds(120),
+
+                EasingFunction =
+                    new QuadraticEase
+                    {
+                        EasingMode = EasingMode.EaseOut
+                    }
+            };
+
+        // Anima os dois eixos simultaneamente para manter
+        // o ícone proporcional durante o efeito.
+        scaleTransform.BeginAnimation(
+            ScaleTransform.ScaleXProperty,
+            animation);
+
+        scaleTransform.BeginAnimation(
+            ScaleTransform.ScaleYProperty,
+            animation);
+    }
+
+    /// <summary>
     /// Controla a abertura do menu de contexto da Dock.
     ///
     /// Quando o menu é solicitado diretamente sobre um ícone,
@@ -733,7 +1032,12 @@ public partial class MainWindow : Window
     ///
     /// Este método é utilizado pela janela de configurações
     /// para permitir que o usuário visualize alterações
-    /// de cor e opacidade antes de salvá-las definitivamente.
+    /// de cor de fundo e opacidade antes de salvá-las definitivamente.
+    ///
+    /// Observação: a pré-visualização ao vivo cobre apenas cor
+    /// de fundo e opacidade (como já era antes). Borda, sombra,
+    /// degradê e espaçamento são aplicados somente após salvar,
+    /// através de Reload().
     ///
     /// As alterações aplicadas aqui não são persistidas.
     /// </summary>

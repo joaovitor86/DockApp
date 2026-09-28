@@ -26,13 +26,16 @@ namespace DockApp;
 /// - Carregar as configurações atuais.
 /// - Exibir os valores salvos nos controles da interface.
 /// - Permitir selecionar a pasta dos atalhos.
-/// - Permitir alterar a cor da Dock.
+/// - Permitir alterar a cor da Dock (sólida ou em degradê).
 /// - Permitir alterar a transparência.
 /// - Permitir alterar o arredondamento das bordas.
-/// - Permitir alterar o tamanho dos ícones.
+/// - Permitir alterar a cor e a espessura da borda.
+/// - Permitir habilitar e configurar a sombra.
+/// - Permitir configurar o espaçamento (padding e entre ícones).
+/// - Permitir alterar o tamanho dos ícones e o zoom no hover.
 /// - Permitir alterar a posição da Dock.
 /// - Permitir configurar a inicialização com o Windows.
-/// - Pré-visualizar alterações de aparência.
+/// - Pré-visualizar alterações de cor de fundo/opacidade.
 /// - Salvar ou cancelar as alterações.
 ///
 /// As configurações são persistidas através do
@@ -54,7 +57,7 @@ public partial class SettingsWindow : Window
 
     /// <summary>
     /// Callback opcional utilizado para pré-visualizar alterações
-    /// de aparência na janela principal da Dock.
+    /// de cor de fundo/opacidade na janela principal da Dock.
     ///
     /// Recebe:
     /// - string: cor hexadecimal.
@@ -62,6 +65,10 @@ public partial class SettingsWindow : Window
     ///
     /// É nullable porque a janela pode ser utilizada sem
     /// uma janela principal fornecendo esse callback.
+    ///
+    /// Observação: cobre apenas cor de fundo e opacidade. Borda,
+    /// sombra, degradê e espaçamento são aplicados somente após
+    /// salvar (a janela principal recarrega tudo via Reload()).
     /// </summary>
     private readonly Action<string, double>? _onPreview;
 
@@ -79,8 +86,8 @@ public partial class SettingsWindow : Window
     /// Inicializa uma nova instância da janela de configurações.
     /// </summary>
     /// <param name="onPreview">
-    /// Callback opcional chamado quando o usuário altera valores
-    /// relacionados à aparência da Dock.
+    /// Callback opcional chamado quando o usuário altera a cor
+    /// de fundo ou a opacidade da Dock.
     /// </param>
     public SettingsWindow(
         Action<string, double>? onPreview = null)
@@ -126,6 +133,27 @@ public partial class SettingsWindow : Window
         // Carrega o tamanho dos ícones.
         IconSizeSlider.Value = _settings.IconSize;
 
+        // Carrega a cor e a espessura da borda.
+        BorderColorTextBox.Text = _settings.BorderColor;
+        BorderThicknessSlider.Value = _settings.BorderThickness;
+
+        // Carrega as configurações de sombra.
+        ShadowEnabledCheckBox.IsChecked = _settings.EnableShadow;
+        ShadowOpacitySlider.Value = _settings.ShadowOpacity;
+        ShadowBlurSlider.Value = _settings.ShadowBlur;
+        ShadowDepthSlider.Value = _settings.ShadowDepth;
+
+        // Carrega as configurações de degradê.
+        UseGradientCheckBox.IsChecked = _settings.UseGradient;
+        ColorTextBox2.Text = _settings.BackgroundColor2;
+        GradientAngleSlider.Value = _settings.GradientAngle;
+
+        // Carrega o espaçamento (padding e entre ícones) e o hover.
+        DockPaddingHorizontalSlider.Value = _settings.DockPaddingHorizontal;
+        DockPaddingVerticalSlider.Value = _settings.DockPaddingVertical;
+        IconSpacingSlider.Value = _settings.IconSpacing;
+        HoverScaleSlider.Value = _settings.HoverScale;
+
         // A seleção não pode ser feita diretamente pelo índice,
         // pois os ComboBoxItem utilizam Tag para armazenar
         // o valor correspondente ao enum DockPosition.
@@ -147,8 +175,10 @@ public partial class SettingsWindow : Window
         StartWithWindowsCheckBox.IsChecked =
             _settings.StartWithWindows;
 
-        // Atualiza o pequeno indicador visual da cor.
+        // Atualiza os pequenos indicadores visuais de cor.
         UpdateColorPreview();
+        UpdateColorPreview2();
+        UpdateBorderColorPreview();
     }
 
     /// <summary>
@@ -189,18 +219,20 @@ public partial class SettingsWindow : Window
     }
 
     /// <summary>
-    /// Abre o seletor de cores do Windows quando o usuário
-    /// clica na área de pré-visualização da cor.
+    /// Abre o seletor de cores do Windows para o campo de texto
+    /// informado, atualizando-o com a cor escolhida.
+    ///
+    /// Reutilizado pelos três seletores de cor da janela: cor de
+    /// fundo, segunda cor do degradê e cor da borda.
     /// </summary>
-    /// <param name="sender">
-    /// Objeto que recebeu o clique.
+    /// <param name="target">
+    /// TextBox que receberá a cor escolhida, no formato #RRGGBB.
     /// </param>
-    /// <param name="e">
-    /// Argumentos do evento de mouse.
-    /// </param>
-    private void ColorPreview_Click(
-        object sender,
-        MouseButtonEventArgs e)
+    /// <returns>
+    /// <c>true</c> quando o usuário confirmou uma nova cor;
+    /// <c>false</c> quando cancelou o diálogo.
+    /// </returns>
+    private static bool PickColor(System.Windows.Controls.TextBox target)
     {
         // Cria o diálogo de seleção de cores do Windows Forms.
         using var dialog =
@@ -216,7 +248,7 @@ public partial class SettingsWindow : Window
                 // o cinza escuro padrão da Dock.
                 Color =
                     TryParseColor(
-                        ColorTextBox.Text,
+                        target.Text,
                         out var current)
                         ? System.Drawing.Color.FromArgb(
                             current.R,
@@ -229,21 +261,60 @@ public partial class SettingsWindow : Window
             };
 
         // Verifica se o usuário confirmou uma nova cor.
-        if (dialog.ShowDialog() ==
+        if (dialog.ShowDialog() !=
             System.Windows.Forms.DialogResult.OK)
         {
-            // Obtém a cor escolhida.
-            var c = dialog.Color;
-
-            // Converte a cor para o formato hexadecimal
-            // utilizado pelo DockSettings.
-            ColorTextBox.Text =
-                $"#{c.R:X2}{c.G:X2}{c.B:X2}";
+            return false;
         }
+
+        // Obtém a cor escolhida.
+        var c = dialog.Color;
+
+        // Converte a cor para o formato hexadecimal utilizado
+        // pelo DockSettings. Isso dispara o TextChanged do
+        // TextBox correspondente, que já atualiza a respectiva
+        // pré-visualização.
+        target.Text =
+            $"#{c.R:X2}{c.G:X2}{c.B:X2}";
+
+        return true;
     }
 
     /// <summary>
-    /// Executado quando o conteúdo do campo de cor é alterado.
+    /// Abre o seletor de cores do Windows para a cor de fundo
+    /// principal da Dock.
+    /// </summary>
+    private void ColorPreview_Click(
+        object sender,
+        MouseButtonEventArgs e)
+    {
+        PickColor(ColorTextBox);
+    }
+
+    /// <summary>
+    /// Abre o seletor de cores do Windows para a segunda cor
+    /// utilizada no degradê da Dock.
+    /// </summary>
+    private void ColorPreview2_Click(
+        object sender,
+        MouseButtonEventArgs e)
+    {
+        PickColor(ColorTextBox2);
+    }
+
+    /// <summary>
+    /// Abre o seletor de cores do Windows para a cor da borda
+    /// da Dock.
+    /// </summary>
+    private void BorderColorPreview_Click(
+        object sender,
+        MouseButtonEventArgs e)
+    {
+        PickColor(BorderColorTextBox);
+    }
+
+    /// <summary>
+    /// Executado quando o texto do campo de cor de fundo é alterado.
     ///
     /// Atualiza a pré-visualização da cor e notifica a janela
     /// principal para atualizar temporariamente a aparência da Dock.
@@ -264,6 +335,45 @@ public partial class SettingsWindow : Window
         // Solicita à janela principal que aplique
         // temporariamente a nova aparência.
         NotifyPreview();
+    }
+
+    /// <summary>
+    /// Executado quando o texto do campo da segunda cor
+    /// (utilizada no degradê) é alterado.
+    ///
+    /// Apenas atualiza a pré-visualização local do quadrado de cor;
+    /// o degradê completo só é aplicado à Dock após salvar.
+    /// </summary>
+    /// <param name="sender">
+    /// Objeto que disparou o evento.
+    /// </param>
+    /// <param name="e">
+    /// Argumentos relacionados à alteração do texto.
+    /// </param>
+    private void ColorTextBox2_TextChanged(
+        object sender,
+        TextChangedEventArgs e)
+    {
+        UpdateColorPreview2();
+    }
+
+    /// <summary>
+    /// Executado quando o texto do campo de cor da borda é alterado.
+    ///
+    /// Apenas atualiza a pré-visualização local do quadrado de cor;
+    /// a borda só é aplicada à Dock após salvar.
+    /// </summary>
+    /// <param name="sender">
+    /// Objeto que disparou o evento.
+    /// </param>
+    /// <param name="e">
+    /// Argumentos relacionados à alteração do texto.
+    /// </param>
+    private void BorderColorTextBox_TextChanged(
+        object sender,
+        TextChangedEventArgs e)
+    {
+        UpdateBorderColorPreview();
     }
 
     /// <summary>
@@ -294,7 +404,7 @@ public partial class SettingsWindow : Window
 
     /// <summary>
     /// Notifica o callback de pré-visualização sobre uma alteração
-    /// válida de cor ou opacidade.
+    /// válida de cor de fundo ou opacidade.
     ///
     /// A pré-visualização só é enviada quando a cor hexadecimal
     /// atual pode ser convertida corretamente.
@@ -315,7 +425,7 @@ public partial class SettingsWindow : Window
     }
 
     /// <summary>
-    /// Atualiza o quadrado de pré-visualização da cor.
+    /// Atualiza o quadrado de pré-visualização da cor de fundo.
     ///
     /// Quando o valor digitado é válido, o fundo recebe a cor.
     /// Quando é inválido, o fundo fica transparente.
@@ -332,6 +442,39 @@ public partial class SettingsWindow : Window
                 ? new SolidColorBrush(color)
 
                 // Cor inválida: deixa a pré-visualização transparente.
+                : Brushes.Transparent;
+    }
+
+    /// <summary>
+    /// Atualiza o quadrado de pré-visualização da segunda cor
+    /// (utilizada no degradê).
+    ///
+    /// Quando o valor digitado é válido, o fundo recebe a cor.
+    /// Quando é inválido, o fundo fica transparente.
+    /// </summary>
+    private void UpdateColorPreview2()
+    {
+        ColorPreview2.Background =
+            TryParseColor(
+                ColorTextBox2.Text,
+                out var color)
+                ? new SolidColorBrush(color)
+                : Brushes.Transparent;
+    }
+
+    /// <summary>
+    /// Atualiza o quadrado de pré-visualização da cor da borda.
+    ///
+    /// Quando o valor digitado é válido, o fundo recebe a cor.
+    /// Quando é inválido, o fundo fica transparente.
+    /// </summary>
+    private void UpdateBorderColorPreview()
+    {
+        BorderColorPreview.Background =
+            TryParseColor(
+                BorderColorTextBox.Text,
+                out var color)
+                ? new SolidColorBrush(color)
                 : Brushes.Transparent;
     }
 
@@ -376,9 +519,10 @@ public partial class SettingsWindow : Window
     /// <summary>
     /// Salva todas as configurações preenchidas pelo usuário.
     ///
-    /// Antes de salvar, valida a cor hexadecimal.
-    /// Depois atualiza o objeto DockSettings, persiste os dados
-    /// e configura a inicialização automática do Windows.
+    /// Antes de salvar, valida as três cores configuráveis
+    /// (fundo, segunda cor do degradê e borda). Depois atualiza
+    /// o objeto DockSettings, persiste os dados e configura
+    /// a inicialização automática do Windows.
     /// </summary>
     /// <param name="sender">
     /// Objeto que disparou o evento.
@@ -390,14 +534,14 @@ public partial class SettingsWindow : Window
         object sender,
         RoutedEventArgs e)
     {
-        // Valida a cor antes de permitir o salvamento.
-        if (!TryParseColor(
-                ColorTextBox.Text,
-                out _))
+        // Valida as três cores antes de permitir o salvamento.
+        if (!TryParseColor(ColorTextBox.Text, out _) ||
+            !TryParseColor(ColorTextBox2.Text, out _) ||
+            !TryParseColor(BorderColorTextBox.Text, out _))
         {
-            // Informa ao usuário que o formato da cor é inválido.
+            // Informa ao usuário que o formato de alguma cor é inválido.
             MessageBox.Show(
-                "Cor inválida. Use o formato #RRGGBB.",
+                "Uma das cores informadas é inválida. Use o formato #RRGGBB.",
                 "Configurações",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
@@ -425,6 +569,49 @@ public partial class SettingsWindow : Window
         // Atualiza o tamanho dos ícones.
         _settings.IconSize =
             IconSizeSlider.Value;
+
+        // Atualiza a cor e a espessura da borda.
+        _settings.BorderColor =
+            BorderColorTextBox.Text;
+
+        _settings.BorderThickness =
+            BorderThicknessSlider.Value;
+
+        // Atualiza as configurações de sombra.
+        _settings.EnableShadow =
+            ShadowEnabledCheckBox.IsChecked == true;
+
+        _settings.ShadowOpacity =
+            ShadowOpacitySlider.Value;
+
+        _settings.ShadowBlur =
+            ShadowBlurSlider.Value;
+
+        _settings.ShadowDepth =
+            ShadowDepthSlider.Value;
+
+        // Atualiza as configurações de degradê.
+        _settings.UseGradient =
+            UseGradientCheckBox.IsChecked == true;
+
+        _settings.BackgroundColor2 =
+            ColorTextBox2.Text;
+
+        _settings.GradientAngle =
+            GradientAngleSlider.Value;
+
+        // Atualiza o espaçamento (padding e entre ícones) e o hover.
+        _settings.DockPaddingHorizontal =
+            DockPaddingHorizontalSlider.Value;
+
+        _settings.DockPaddingVertical =
+            DockPaddingVerticalSlider.Value;
+
+        _settings.IconSpacing =
+            IconSpacingSlider.Value;
+
+        _settings.HoverScale =
+            HoverScaleSlider.Value;
 
         // A posição não é obtida pelo índice do ComboBox.
         //

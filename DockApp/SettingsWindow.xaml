@@ -453,6 +453,7 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
 
@@ -797,10 +798,328 @@
 
 
             <!-- ========================================================
+                 CARD - EFEITOS AVANÇADOS (borda, sombra, degradê, espaçamento)
+                 ======================================================== -->
+
+            <Border Grid.Row="2" x:Name="CardEfeitos" Style="{StaticResource CardStyle}" Margin="0,16,0,0"
+                    BorderBrush="{StaticResource BorderBrush}">
+                <Border.Effect>
+                    <DropShadowEffect x:Name="ShadowEfeitos" Color="#000000" BlurRadius="18" ShadowDepth="4" Opacity="0.45"/>
+                </Border.Effect>
+                <Border.Triggers>
+                    <EventTrigger RoutedEvent="Border.MouseEnter">
+                        <BeginStoryboard>
+                            <Storyboard>
+                                <ColorAnimation Storyboard.TargetName="CardEfeitos" Storyboard.TargetProperty="(Border.BorderBrush).(SolidColorBrush.Color)" To="#7C3AED" Duration="0:0:0.15"/>
+                                <DoubleAnimation Storyboard.TargetName="ShadowEfeitos" Storyboard.TargetProperty="BlurRadius" To="26" Duration="0:0:0.15"/>
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </EventTrigger>
+                    <EventTrigger RoutedEvent="Border.MouseLeave">
+                        <BeginStoryboard>
+                            <Storyboard>
+                                <ColorAnimation Storyboard.TargetName="CardEfeitos" Storyboard.TargetProperty="(Border.BorderBrush).(SolidColorBrush.Color)" To="#2A2D34" Duration="0:0:0.2"/>
+                                <DoubleAnimation Storyboard.TargetName="ShadowEfeitos" Storyboard.TargetProperty="BlurRadius" To="18" Duration="0:0:0.2"/>
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </EventTrigger>
+                </Border.Triggers>
+
+                <StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                        <TextBlock Text="&#xE771;" Style="{StaticResource IconGlyph}" Foreground="{StaticResource AccentSolidBrush}" Margin="0,0,8,0"/>
+                        <TextBlock Text="Efeitos avançados" Style="{StaticResource SectionTitle}"/>
+                    </StackPanel>
+
+                    <TextBlock Text="Ajuste borda, sombra, degradê e espaçamento da Dock."
+                               Style="{StaticResource DescriptionText}"
+                               Margin="0,0,0,18"/>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="20"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="20"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="20"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- COLUNA 1: BORDA -->
+                        <StackPanel Grid.Column="0">
+
+                            <TextBlock Text="Borda" Style="{StaticResource FieldLabel}" Margin="0,0,0,8"/>
+
+                            <Grid Margin="0,0,0,14">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <TextBox x:Name="BorderColorTextBox"
+                                         Grid.Column="0"
+                                         Style="{StaticResource ModernTextBox}"
+                                         TextChanged="BorderColorTextBox_TextChanged"/>
+
+                                <Border x:Name="BorderColorPreview"
+                                        Grid.Column="1"
+                                        Width="40" Height="40"
+                                        Margin="8,0,0,0"
+                                        Background="#404040"
+                                        BorderBrush="#40444C"
+                                        BorderThickness="1.4"
+                                        CornerRadius="9"
+                                        Cursor="Hand"
+                                        MouseLeftButtonDown="BorderColorPreview_Click"
+                                        ToolTip="Clique para escolher a cor"/>
+
+                            </Grid>
+
+                            <Grid Margin="0,0,0,7">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Espessura" Style="{StaticResource FieldLabel}"/>
+                                <Border Grid.Column="1" Background="#20222A" CornerRadius="5" Padding="8,2">
+                                    <TextBlock Text="{Binding ElementName=BorderThicknessSlider, Path=Value, StringFormat={}{0:0.#} px}"
+                                               FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource IconTeal}"/>
+                                </Border>
+                            </Grid>
+
+                            <Slider x:Name="BorderThicknessSlider"
+                                    Style="{StaticResource ModernSlider}"
+                                    Minimum="0" Maximum="6" TickFrequency="0.5"/>
+
+                        </StackPanel>
+
+                        <!-- COLUNA 2: SOMBRA -->
+                        <StackPanel Grid.Column="2">
+
+                            <Border Background="{StaticResource InputBrush}"
+                                    BorderBrush="{StaticResource BorderBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="10"
+                                    Padding="12"
+                                    Margin="0,0,0,14">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Sombra" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <CheckBox x:Name="ShadowEnabledCheckBox"
+                                              Grid.Column="1"
+                                              VerticalAlignment="Center"
+                                              Style="{StaticResource ToggleSwitch}"/>
+                                </Grid>
+                            </Border>
+
+                            <Grid Margin="0,0,0,7">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Opacidade" Style="{StaticResource FieldLabel}"/>
+                                <Border Grid.Column="1" Background="#20222A" CornerRadius="5" Padding="8,2">
+                                    <TextBlock Text="{Binding ElementName=ShadowOpacitySlider, Path=Value, StringFormat={}{0:P0}}"
+                                               FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource IconTeal}"/>
+                                </Border>
+                            </Grid>
+
+                            <Slider x:Name="ShadowOpacitySlider"
+                                    Style="{StaticResource ModernSlider}"
+                                    Minimum="0" Maximum="1" TickFrequency="0.05"
+                                    Margin="0,0,0,14"/>
+
+                            <Grid Margin="0,0,0,7">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Desfoque" Style="{StaticResource FieldLabel}"/>
+                                <Border Grid.Column="1" Background="#20222A" CornerRadius="5" Padding="8,2">
+                                    <TextBlock Text="{Binding ElementName=ShadowBlurSlider, Path=Value, StringFormat={}{0:0}}"
+                                               FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource IconTeal}"/>
+                                </Border>
+                            </Grid>
+
+                            <Slider x:Name="ShadowBlurSlider"
+                                    Style="{StaticResource ModernSlider}"
+                                    Minimum="0" Maximum="40" TickFrequency="1"
+                                    Margin="0,0,0,14"/>
+
+                            <Grid Margin="0,0,0,7">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Distância" Style="{StaticResource FieldLabel}"/>
+                                <Border Grid.Column="1" Background="#20222A" CornerRadius="5" Padding="8,2">
+                                    <TextBlock Text="{Binding ElementName=ShadowDepthSlider, Path=Value, StringFormat={}{0:0}}"
+                                               FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource IconTeal}"/>
+                                </Border>
+                            </Grid>
+
+                            <Slider x:Name="ShadowDepthSlider"
+                                    Style="{StaticResource ModernSlider}"
+                                    Minimum="0" Maximum="20" TickFrequency="1"/>
+
+                        </StackPanel>
+
+                        <!-- COLUNA 3: DEGRADÊ -->
+                        <StackPanel Grid.Column="4">
+
+                            <Border Background="{StaticResource InputBrush}"
+                                    BorderBrush="{StaticResource BorderBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="10"
+                                    Padding="12"
+                                    Margin="0,0,0,14">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Degradê" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    <CheckBox x:Name="UseGradientCheckBox"
+                                              Grid.Column="1"
+                                              VerticalAlignment="Center"
+                                              Style="{StaticResource ToggleSwitch}"/>
+                                </Grid>
+                            </Border>
+
+                            <TextBlock Text="Segunda cor" Style="{StaticResource FieldLabel}" Margin="0,0,0,8"/>
+
+                            <Grid Margin="0,0,0,14">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <TextBox x:Name="ColorTextBox2"
+                                         Grid.Column="0"
+                                         Style="{StaticResource ModernTextBox}"
+                                         TextChanged="ColorTextBox2_TextChanged"/>
+
+                                <Border x:Name="ColorPreview2"
+                                        Grid.Column="1"
+                                        Width="40" Height="40"
+                                        Margin="8,0,0,0"
+                                        Background="#101010"
+                                        BorderBrush="#40444C"
+                                        BorderThickness="1.4"
+                                        CornerRadius="9"
+                                        Cursor="Hand"
+                                        MouseLeftButtonDown="ColorPreview2_Click"
+                                        ToolTip="Clique para escolher a cor"/>
+
+                            </Grid>
+
+                            <Grid Margin="0,0,0,7">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Ângulo" Style="{StaticResource FieldLabel}"/>
+                                <Border Grid.Column="1" Background="#20222A" CornerRadius="5" Padding="8,2">
+                                    <TextBlock Text="{Binding ElementName=GradientAngleSlider, Path=Value, StringFormat={}{0:0}°}"
+                                               FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource IconPink}"/>
+                                </Border>
+                            </Grid>
+
+                            <Slider x:Name="GradientAngleSlider"
+                                    Style="{StaticResource ModernSlider}"
+                                    Minimum="0" Maximum="360" TickFrequency="15"/>
+
+                        </StackPanel>
+
+                        <!-- COLUNA 4: ESPAÇAMENTO -->
+                        <StackPanel Grid.Column="6">
+
+                            <Grid Margin="0,0,0,7">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Padding horizontal" Style="{StaticResource FieldLabel}"/>
+                                <Border Grid.Column="1" Background="#20222A" CornerRadius="5" Padding="8,2">
+                                    <TextBlock Text="{Binding ElementName=DockPaddingHorizontalSlider, Path=Value, StringFormat={}{0:0} px}"
+                                               FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource IconBlue}"/>
+                                </Border>
+                            </Grid>
+
+                            <Slider x:Name="DockPaddingHorizontalSlider"
+                                    Style="{StaticResource ModernSlider}"
+                                    Minimum="0" Maximum="40" TickFrequency="2"
+                                    Margin="0,0,0,14"/>
+
+                            <Grid Margin="0,0,0,7">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Padding vertical" Style="{StaticResource FieldLabel}"/>
+                                <Border Grid.Column="1" Background="#20222A" CornerRadius="5" Padding="8,2">
+                                    <TextBlock Text="{Binding ElementName=DockPaddingVerticalSlider, Path=Value, StringFormat={}{0:0} px}"
+                                               FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource IconBlue}"/>
+                                </Border>
+                            </Grid>
+
+                            <Slider x:Name="DockPaddingVerticalSlider"
+                                    Style="{StaticResource ModernSlider}"
+                                    Minimum="0" Maximum="40" TickFrequency="2"
+                                    Margin="0,0,0,14"/>
+
+                            <Grid Margin="0,0,0,7">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Espaço entre ícones" Style="{StaticResource FieldLabel}"/>
+                                <Border Grid.Column="1" Background="#20222A" CornerRadius="5" Padding="8,2">
+                                    <TextBlock Text="{Binding ElementName=IconSpacingSlider, Path=Value, StringFormat={}{0:0} px}"
+                                               FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource IconBlue}"/>
+                                </Border>
+                            </Grid>
+
+                            <Slider x:Name="IconSpacingSlider"
+                                    Style="{StaticResource ModernSlider}"
+                                    Minimum="0" Maximum="30" TickFrequency="1"
+                                    Margin="0,0,0,14"/>
+
+                            <Grid Margin="0,0,0,7">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Zoom no hover" Style="{StaticResource FieldLabel}"/>
+                                <Border Grid.Column="1" Background="#20222A" CornerRadius="5" Padding="8,2">
+                                    <TextBlock Text="{Binding ElementName=HoverScaleSlider, Path=Value, StringFormat={}{0:0%}}"
+                                               FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource IconBlue}"/>
+                                </Border>
+                            </Grid>
+
+                            <Slider x:Name="HoverScaleSlider"
+                                    Style="{StaticResource ModernSlider}"
+                                    Minimum="1" Maximum="2" TickFrequency="0.05"/>
+
+                        </StackPanel>
+
+                    </Grid>
+
+                </StackPanel>
+
+            </Border>
+
+
+            <!-- ========================================================
                  RODAPÉ
                  ======================================================== -->
 
-            <Border Grid.Row="2" Margin="0,22,0,0">
+            <Border Grid.Row="3" Margin="0,22,0,0">
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
 
                     <Button Width="110" Margin="0,0,10,0"

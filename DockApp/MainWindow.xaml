@@ -11,120 +11,14 @@
         WindowStartupLocation="Manual">
 
     <!--
-        Recursos visuais da janela principal.
-        Aqui ficam os estilos utilizados pelos ícones da Dock.
-    -->
-    <Window.Resources>
-
-        <!--
-            Estilo dos ícones da Dock.
-
-            O TransformGroup possui:
-            1. ScaleTransform     -> aumenta/diminui o ícone.
-            2. TranslateTransform -> permite o efeito de "quique"
-               quando o programa é aberto.
-        -->
-        <Style x:Key="DockIconStyle"
-               TargetType="Image">
-
-            <!--
-                Define o centro do próprio ícone como origem
-                das transformações.
-            -->
-            <Setter Property="RenderTransformOrigin"
-                    Value="0.5,0.5"/>
-
-            <!-- Grupo de transformações utilizado pelo código C#. -->
-            <Setter Property="RenderTransform">
-
-                <Setter.Value>
-
-                    <TransformGroup>
-
-                        <!-- Escala utilizada pelo efeito de hover. -->
-                        <ScaleTransform ScaleX="1"
-                                        ScaleY="1"/>
-
-                        <!--
-                            Deslocamento utilizado pelo efeito
-                            de lançamento do aplicativo.
-                        -->
-                        <TranslateTransform X="0"
-                                              Y="0"/>
-
-                    </TransformGroup>
-
-                </Setter.Value>
-
-            </Setter>
-
-            <!--
-                Eventos visuais relacionados ao mouse sobre o ícone.
-            -->
-            <Style.Triggers>
-
-                <Trigger Property="IsMouseOver"
-                         Value="True">
-
-                    <!-- Animação ao entrar com o mouse. -->
-                    <Trigger.EnterActions>
-
-                        <BeginStoryboard>
-
-                            <Storyboard>
-
-                                <DoubleAnimation
-                                    Storyboard.TargetProperty="RenderTransform.Children[0].ScaleX"
-                                    To="1.4"
-                                    Duration="0:0:0.12"/>
-
-                                <DoubleAnimation
-                                    Storyboard.TargetProperty="RenderTransform.Children[0].ScaleY"
-                                    To="1.4"
-                                    Duration="0:0:0.12"/>
-
-                            </Storyboard>
-
-                        </BeginStoryboard>
-
-                    </Trigger.EnterActions>
-
-                    <!-- Animação ao retirar o mouse. -->
-                    <Trigger.ExitActions>
-
-                        <BeginStoryboard>
-
-                            <Storyboard>
-
-                                <DoubleAnimation
-                                    Storyboard.TargetProperty="RenderTransform.Children[0].ScaleX"
-                                    To="1"
-                                    Duration="0:0:0.12"/>
-
-                                <DoubleAnimation
-                                    Storyboard.TargetProperty="RenderTransform.Children[0].ScaleY"
-                                    To="1"
-                                    Duration="0:0:0.12"/>
-
-                            </Storyboard>
-
-                        </BeginStoryboard>
-
-                    </Trigger.ExitActions>
-
-                </Trigger>
-
-            </Style.Triggers>
-
-        </Style>
-
-    </Window.Resources>
-
-    <!--
         Container principal da Dock.
+
+        Padding, Background, BorderBrush, BorderThickness, CornerRadius
+        e Effect (sombra) NÃO são definidos aqui: são 100% controlados
+        pelo método ApplyAppearance() em MainWindow.xaml.cs, a partir
+        das configurações salvas em DockSettings.
     -->
     <Border x:Name="DockBorder"
-            Padding="20"
             ContextMenuOpening="Border_ContextMenuOpening">
 
         <!--
@@ -149,9 +43,11 @@
         <!--
             Lista de ícones.
 
-            O ItemsPanel é definido dinamicamente no
-            MainWindow.xaml.cs para permitir que a Dock
-            fique horizontal ou vertical dependendo da posição.
+            O ItemsPanel e o ItemContainerStyle (responsável pelo
+            espaçamento entre ícones, via IconSpacing) são definidos
+            dinamicamente no MainWindow.xaml.cs, dentro de ApplyLayout(),
+            para permitir que a Dock fique horizontal ou vertical
+            dependendo da posição, e que o espaçamento seja configurável.
         -->
         <ItemsControl x:Name="IconsPanel">
 
@@ -161,6 +57,24 @@
 
                     <!--
                         Ícone individual da Dock.
+
+                        IMPORTANTE:
+                        O RenderTransform é definido AQUI, diretamente
+                        no elemento, e não em um Style compartilhado.
+
+                        Um Style compartilhado entre vários ícones é
+                        selado ("frozen") pelo WPF por performance, o
+                        que impede chamar BeginAnimation() diretamente
+                        em código (gera InvalidOperationException:
+                        "o objeto está selado ou congelado").
+
+                        Como o RenderTransform é declarado aqui dentro
+                        do DataTemplate, cada ícone gerado recebe sua
+                        própria instância de TransformGroup, isolada
+                        das demais, permitindo animar livremente tanto
+                        o "quique" de lançamento (PlayLaunchBounce)
+                        quanto o zoom de hover (Icon_MouseEnter/Leave),
+                        ambos em MainWindow.xaml.cs.
 
                         Source:
                             Recebe DockItem.Icon.
@@ -172,18 +86,44 @@
                         Tag:
                             Guarda o próprio DockItem para
                             ser recuperado pelo evento Icon_Click.
+
+                        MouseEnter/MouseLeave:
+                            Disparam a animação de zoom no hover,
+                            cuja intensidade vem de DockSettings.HoverScale.
                     -->
                     <Image Source="{Binding Icon}"
                            Width="{Binding IconSize, RelativeSource={RelativeSource AncestorType=Window}}"
                            Height="{Binding IconSize, RelativeSource={RelativeSource AncestorType=Window}}"
-                           Margin="6"
                            HorizontalAlignment="Center"
                            VerticalAlignment="Center"
-                           Style="{StaticResource DockIconStyle}"
+                           RenderTransformOrigin="0.5,0.5"
                            Cursor="Hand"
                            ToolTip="{Binding Name}"
                            Tag="{Binding}"
-                           MouseLeftButtonUp="Icon_Click"/>
+                           MouseLeftButtonUp="Icon_Click"
+                           MouseEnter="Icon_MouseEnter"
+                           MouseLeave="Icon_MouseLeave">
+
+                        <Image.RenderTransform>
+
+                            <TransformGroup>
+
+                                <!-- Escala utilizada pelo efeito de hover. -->
+                                <ScaleTransform ScaleX="1"
+                                                ScaleY="1"/>
+
+                                <!--
+                                    Deslocamento utilizado pelo efeito
+                                    de lançamento do aplicativo.
+                                -->
+                                <TranslateTransform X="0"
+                                                      Y="0"/>
+
+                            </TransformGroup>
+
+                        </Image.RenderTransform>
+
+                    </Image>
 
                 </DataTemplate>
 
