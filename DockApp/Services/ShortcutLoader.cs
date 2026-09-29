@@ -78,7 +78,30 @@ public static class ShortcutLoader
         // Antes, uma nova instância era criada a cada arquivo .lnk
         // processado; agora apenas uma instância é criada por chamada
         // a LoadFolder(), independentemente da quantidade de atalhos.
-        var shell = new WshShell();
+        //
+        // A criação é protegida por try/catch porque, em alguns
+        // cenários (por exemplo, quando o DockApp é iniciado
+        // automaticamente pelo Windows logo após o login), o
+        // subsistema COM/Windows Script Host pode ainda não estar
+        // totalmente pronto. Se isso acontecer, os atalhos .lnk
+        // são apenas ignorados nesta varredura (os .url continuam
+        // funcionando normalmente) — a pasta será relida sem
+        // problemas assim que o FolderWatcherService detectar
+        // a próxima alteração.
+        WshShell? shell = null;
+
+        try
+        {
+            shell = new WshShell();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine(
+                $"[DockApp] Não foi possível iniciar o Shell do " +
+                $"Windows (atalhos .lnk serão ignorados nesta " +
+                $"varredura): {ex.Message}"
+            );
+        }
 
         // Processa cada arquivo individualmente.
         foreach (var file in files)
@@ -93,12 +116,13 @@ public static class ShortcutLoader
             // Seleciona o método responsável por interpretar
             // o arquivo de acordo com sua extensão.
             //
-            // .lnk → ReadLnk() (reaproveitando o WshShell criado acima)
+            // .lnk → ReadLnk() (reaproveitando o WshShell criado acima,
+            //        somente se ele foi criado com sucesso)
             // .url → ReadUrl()
             // qualquer outra extensão → null
             var item = ext switch
             {
-                ".lnk" => ReadLnk(file, shell),
+                ".lnk" when shell != null => ReadLnk(file, shell),
                 ".url" => ReadUrl(file),
                 _ => null
             };

@@ -1,4 +1,12 @@
-﻿// Importa os recursos principais do WPF, incluindo:
+﻿// Importa recursos de diagnóstico, utilizados para registrar
+// mensagens de depuração e o log de exceções não tratadas.
+using System.Diagnostics;
+
+// Importa recursos para manipulação de diretórios e arquivos,
+// utilizados pelo log de exceções não tratadas.
+using System.IO;
+
+// Importa os recursos principais do WPF, incluindo:
 // - Application
 // - StartupEventArgs
 // - ExitEventArgs
@@ -22,6 +30,8 @@ namespace DockApp;
 ///
 /// Responsabilidades:
 /// - Inicializar a aplicação.
+/// - Registrar um handler global para exceções não tratadas,
+///   evitando que uma falha pontual encerre o processo inteiro.
 /// - Criar e exibir a janela principal.
 /// - Configurar o ícone do aplicativo na bandeja do Windows.
 /// - Disponibilizar ações através do menu da bandeja.
@@ -36,6 +46,14 @@ namespace DockApp;
 /// </summary>
 public partial class App : Application
 {
+    /// <summary>
+    /// Nome do arquivo de ícone utilizado tanto pelo ícone
+    /// embutido no executável (ApplicationIcon, no .csproj)
+    /// quanto pelo ícone exibido na bandeja do Windows.
+    /// </summary>
+    private const string TrayIconFileName =
+        "ChatGPT-Image-26-de-set.-de-2026_-20_43_10.ico";
+
     /// <summary>
     /// Ícone do DockApp exibido na área de notificação
     /// (bandeja do Windows).
@@ -61,17 +79,31 @@ public partial class App : Application
     /// Executado quando a aplicação WPF é iniciada.
     ///
     /// Responsabilidades da inicialização:
-    /// 1. Executar a inicialização padrão do WPF.
-    /// 2. Configurar o encerramento explícito da aplicação.
-    /// 3. Criar a janela principal.
-    /// 4. Exibir a Dock.
-    /// 5. Configurar o ícone da bandeja do Windows.
+    /// 1. Registrar o handler global de exceções não tratadas.
+    /// 2. Executar a inicialização padrão do WPF.
+    /// 3. Configurar o encerramento explícito da aplicação.
+    /// 4. Criar a janela principal.
+    /// 5. Exibir a Dock.
+    /// 6. Configurar o ícone da bandeja do Windows.
     /// </summary>
     /// <param name="e">
     /// Argumentos fornecidos pelo WPF durante o evento de inicialização.
     /// </param>
     protected override void OnStartup(StartupEventArgs e)
     {
+        // Registra o handler global de exceções não tratadas antes
+        // de qualquer outra coisa, para que ele já esteja ativo
+        // durante toda a inicialização da aplicação.
+        //
+        // Sem esse handler, qualquer exceção não tratada em algum
+        // ponto da inicialização ou do uso normal do DockApp (por
+        // exemplo: extração de um ícone problemático, leitura de
+        // um atalho corrompido, falha ao criar algum recurso do
+        // Windows logo após o login) encerraria o processo inteiro
+        // sem aviso — que é exatamente o sintoma de "a Dock aparece,
+        // trava por alguns segundos e fecha sozinha".
+        DispatcherUnhandledException += OnDispatcherUnhandledException;
+
         // Executa a inicialização padrão da classe Application.
         base.OnStartup(e);
 
@@ -94,6 +126,83 @@ public partial class App : Application
 
         // Cria e configura o ícone e o menu da bandeja do Windows.
         SetupTrayIcon();
+    }
+
+    /// <summary>
+    /// Executado sempre que uma exceção não tratada chega até o
+    /// Dispatcher da interface WPF (ou seja, qualquer exceção que
+    /// nenhum try/catch mais específico conseguiu capturar antes).
+    ///
+    /// Em vez de deixar o WPF encerrar o processo inteiro, o erro
+    /// é registrado em um arquivo de log (já que o DockApp, sendo
+    /// um app de bandeja, normalmente não tem nenhuma janela de
+    /// console visível para mostrar a mensagem), e a exceção é
+    /// marcada como tratada, permitindo que a Dock continue
+    /// funcionando normalmente.
+    /// </summary>
+    /// <param name="sender">
+    /// Objeto que disparou o evento.
+    /// </param>
+    /// <param name="e">
+    /// Contém a exceção não tratada e a propriedade Handled,
+    /// que controla se o processo deve ou não ser encerrado.
+    /// </param>
+    private void OnDispatcherUnhandledException(
+        object sender,
+        System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
+    {
+        // Registra o erro para diagnóstico futuro.
+        LogUnhandledException(e.Exception);
+
+        // Marca a exceção como tratada para impedir que o WPF
+        // encerre o processo inteiro por causa de um erro pontual.
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// Grava uma exceção não tratada em um arquivo de log, em:
+    ///
+    /// %AppData%\DockApp\crash.log
+    ///
+    /// A gravação em si também é protegida por try/catch: se nem
+    /// o log puder ser escrito (por exemplo, por falta de espaço
+    /// em disco ou permissão), o app simplesmente continua rodando
+    /// mesmo assim — registrar o erro é útil, mas nunca deve ser
+    /// motivo para uma nova falha.
+    /// </summary>
+    /// <param name="exception">
+    /// Exceção não tratada que deve ser registrada.
+    /// </param>
+    private static void LogUnhandledException(Exception exception)
+    {
+        try
+        {
+            // Mesma pasta de configuração utilizada pelo
+            // ConfigurationService, para manter tudo organizado
+            // em um único lugar.
+            var folder =
+                Path.Combine(
+                    Environment.GetFolderPath(
+                        Environment.SpecialFolder.ApplicationData),
+                    "DockApp");
+
+            Directory.CreateDirectory(folder);
+
+            var logPath = Path.Combine(folder, "crash.log");
+
+            // Adiciona a nova entrada ao final do arquivo,
+            // preservando o histórico de execuções anteriores.
+            File.AppendAllText(
+                logPath,
+                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] " +
+                $"{exception}{Environment.NewLine}{Environment.NewLine}"
+            );
+        }
+        catch
+        {
+            // Se nem o log puder ser gravado, não há mais nada
+            // a fazer além de deixar o app continuar rodando.
+        }
     }
 
     /// <summary>
@@ -153,12 +262,12 @@ public partial class App : Application
         {
             // Carrega o ícone personalizado do DockApp.
             //
-            // O caminho é relativo ao diretório de execução
-            // da aplicação. Portanto, o arquivo .ico precisa
-            // estar disponível nesse diretório durante a execução.
-            Icon = new System.Drawing.Icon(
-                @"ChatGPT-Image-26-de-set.-de-2026_-20_43_10.ico"
-            ),
+            // LoadTrayIcon() resolve o caminho de forma robusta
+            // (independente do diretório de trabalho do processo)
+            // e nunca lança exceção — em caso de falha, retorna
+            // um ícone padrão do sistema. Ver LoadTrayIcon() para
+            // detalhes.
+            Icon = LoadTrayIcon(),
 
             // Torna o ícone visível na bandeja do Windows.
             Visible = true,
@@ -180,6 +289,58 @@ public partial class App : Application
         // Os parâmetros "_" indicam que tanto o objeto que disparou
         // o evento quanto seus argumentos não são utilizados.
         _trayIcon.DoubleClick += (_, _) => _mainWindow?.ShowDock();
+    }
+
+    /// <summary>
+    /// Carrega o ícone utilizado na bandeja do Windows.
+    ///
+    /// O caminho é resolvido a partir de
+    /// <see cref="AppContext.BaseDirectory"/> — a pasta real onde
+    /// o executável do DockApp está instalado — em vez de um
+    /// caminho relativo simples.
+    ///
+    /// Um caminho relativo simples depende do diretório de trabalho
+    /// (CWD) do processo no momento em que ele é iniciado. Quando
+    /// o DockApp é aberto manualmente (duplo clique no .exe), o
+    /// Windows normalmente define o CWD como a própria pasta do
+    /// executável. Porém, quando o DockApp é iniciado automaticamente
+    /// pelo Windows (através da entrada configurada em
+    /// HKCU\...\Run por <see cref="Services.StartupService"/>), esse
+    /// CWD pode ser diferente — fazendo com que o caminho relativo
+    /// simplesmente não seja encontrado, e o carregamento do ícone
+    /// falhe justamente nesse cenário.
+    ///
+    /// Se, mesmo assim, o ícone não puder ser carregado por qualquer
+    /// outro motivo, um ícone padrão do sistema é utilizado como
+    /// último recurso — a falha em carregar o .ico personalizado
+    /// nunca deve impedir a bandeja (e, por consequência, o
+    /// DockApp inteiro) de continuar funcionando.
+    /// </summary>
+    /// <returns>
+    /// O ícone personalizado do DockApp, ou um ícone padrão
+    /// do sistema em caso de falha.
+    /// </returns>
+    private static System.Drawing.Icon LoadTrayIcon()
+    {
+        try
+        {
+            var iconPath =
+                Path.Combine(
+                    AppContext.BaseDirectory,
+                    TrayIconFileName);
+
+            return new System.Drawing.Icon(iconPath);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine(
+                $"[DockApp] Não foi possível carregar o ícone " +
+                $"personalizado da bandeja, utilizando um ícone " +
+                $"padrão do sistema: {ex.Message}"
+            );
+
+            return System.Drawing.SystemIcons.Application;
+        }
     }
 
     /// <summary>
