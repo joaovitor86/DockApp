@@ -13,6 +13,7 @@ public sealed class ShortcutLoader
 {
     private readonly record struct IconKey(string Path, string? Image, DateTime SourceTime, DateTime ImageTime);
     private Dictionary<IconKey, ImageSource> _icons = [];
+    private Dictionary<(string Path, DateTime Written), (string? Executable, uint? SteamId)> _targets = [];
 
     public Task<List<DockItem>> LoadAsync(DockSettings settings)
     {
@@ -30,6 +31,19 @@ public sealed class ShortcutLoader
     private List<DockItem> LoadItems(DockSettings settings)
     {
         var nextIcons = new Dictionary<IconKey, ImageSource>();
+        var nextTargets = new Dictionary<(string, DateTime), (string? Executable, uint? SteamId)>();
+        DockItem CreateItem(string path, string name, string? image = null)
+        {
+            var key = (path, LastWrite(path));
+            if (!_targets.TryGetValue(key, out var target))
+                target = RunningApps.Identify(path);
+            nextTargets[key] = target;
+            return new DockItem
+            {
+                Name = name, SourcePath = path, Icon = GetIcon(path, image),
+                ExecutablePath = target.Executable, SteamAppId = target.SteamId
+            };
+        }
         ImageSource? GetIcon(string path, string? image = null)
         {
             var key = new IconKey(path, image, LastWrite(path), LastWrite(image));
@@ -48,12 +62,7 @@ public sealed class ShortcutLoader
                 continue;
 
             pinnedPaths.Add(pin.Path);
-            items.Add(new DockItem
-            {
-                Name = string.IsNullOrWhiteSpace(pin.Name) ? pin.Path : pin.Name,
-                SourcePath = pin.Path,
-                Icon = GetIcon(pin.Path, pin.IconPath)
-            });
+            items.Add(CreateItem(pin.Path, string.IsNullOrWhiteSpace(pin.Name) ? pin.Path : pin.Name, pin.IconPath));
         }
 
         try
@@ -69,12 +78,7 @@ public sealed class ShortcutLoader
                           extension.Equals(".url", StringComparison.OrdinalIgnoreCase)))
                         continue;
 
-                    items.Add(new DockItem
-                    {
-                        Name = Path.GetFileNameWithoutExtension(file),
-                        SourcePath = file,
-                        Icon = GetIcon(file)
-                    });
+                    items.Add(CreateItem(file, Path.GetFileNameWithoutExtension(file)));
                 }
             }
         }
@@ -83,6 +87,7 @@ public sealed class ShortcutLoader
             Debug.WriteLine(ex.Message);
         }
         _icons = nextIcons;
+        _targets = nextTargets;
         return items;
     }
 

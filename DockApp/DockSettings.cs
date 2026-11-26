@@ -12,6 +12,7 @@ public enum LaunchEffect { Bounce, Pulse, Tilt }
 public class DockSettings
 {
     public List<PinnedItem> PinnedItems { get; set; } = [];
+    public List<string> ItemOrder { get; set; } = [];
     public double EdgeDistance { get; set; } = 5;
     public bool AlwaysOnTop { get; set; }
     public bool ShowNames { get; set; } = true;

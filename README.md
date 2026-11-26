@@ -4,6 +4,15 @@ O DockApp é um lançador de aplicativos para Windows escrito em C# e WPF. A doc
 
 Para começar pelo código, leia [App.xaml.cs](DockApp/App.xaml.cs) para entender o ciclo de vida, [MainWindow.xaml.cs](DockApp/MainWindow.xaml.cs) para seguir uma recarga e [DockSettings.cs](DockApp/DockSettings.cs) para conhecer o estado persistido. Este guia descreve o código do repositório em 26 de novembro de 2026.
 
+### Organizar a dock
+
+| Quero… | Como fazer |
+|---|---|
+| Agrupar programas e jogos | Clique com o botão direito no ícone que encerra o primeiro grupo e escolha **Adicionar separador**. Para acrescentar a barra ao final da dock, abra o menu sobre o fundo. |
+| Mover um ícone ou separador | Arraste-o sobre a posição desejada e solte quando o destino estiver destacado. A dock salva a ordem imediatamente. |
+| Desfazer uma divisão | Clique com o botão direito na barra e escolha **Remover separador**. Os ícones dos dois grupos permanecem na dock. |
+| Ver o que está em execução | Procure o ponto verde no ícone. Ele também identifica programas compatíveis abertos pelo Explorer ou por outro lançador. |
+
 ## Capturas de tela
 
 | Dock vertical | Menu de contexto |
@@ -48,6 +57,9 @@ A compilação Release foi conferida com o SDK 10.0.401. A saída padrão depend
 | [App.xaml](DockApp/App.xaml) e [App.xaml.cs](DockApp/App.xaml.cs) | Ponto de entrada WPF, criação da janela, menu da bandeja, log de exceções e encerramento explícito. |
 | [MainWindow.xaml](DockApp/MainWindow.xaml) | Janela transparente sem moldura, botão da lista vazia e template dos ícones com transformações por item. |
 | [MainWindow.xaml.cs](DockApp/MainWindow.xaml.cs) | Coordena carga, posição, aparência, monitoramento, interação, animações e balões. |
+| [MainWindow.Items.cs](DockApp/MainWindow.Items.cs) | Trata o menu de separadores, distingue clique de arraste, salva a ordem após soltar e atualiza o indicador de execução. |
+| [DockOrder.cs](DockApp/Services/DockOrder.cs) | Reconstrói os separadores e combina a ordem global da barra com a ordem relativa dos itens fixados. |
+| [RunningApps.cs](DockApp/Services/RunningApps.cs) | Identifica o executável ou o ID de jogo Steam associado ao item e consulta seu estado de execução. |
 | [SettingsWindow.xaml](DockApp/SettingsWindow.xaml) | Interface de configuração em quatro abas, estilos WPF e rodapé com as ações de salvar e cancelar. |
 | [SettingsWindow.xaml.cs](DockApp/SettingsWindow.xaml.cs) | Carrega campos, aplica perfis, valida cores, envia a prévia de fundo e confirma as preferências. |
 | [SettingsWindow.Items.cs](DockApp/SettingsWindow.Items.cs) | Outra parte da mesma classe. Edita a coleção de itens, recebe arquivos arrastados, troca ícones e confirma a ordem. |
@@ -73,8 +85,11 @@ flowchart TD
     C --> G[SetupFolderWatcher]
     G -->|Mudança na pasta| F
     F --> H[ShortcutLoader em thread STA]
-    H --> I[Dispatcher atualiza IconsPanel]
-    I -->|Clique| J[DockItem.Open pelo Shell]
+    H --> O[DockOrder.Arrange recupera ordem e separadores]
+    O --> I[Dispatcher atualiza IconsPanel]
+    I -->|Clique em aplicativo| J[DockItem.Open pelo Shell]
+    I -->|Arraste ou edição de separador| S[SaveDockOrder grava settings.json]
+    R[RunningApps.Find em segundo plano] -->|IsRunning| I
     T --> K[SettingsWindow]
     K -->|Salvar| C
 ```
@@ -88,10 +103,16 @@ flowchart TD
 
 | Origem | Entrada | Ordem e personalização |
 |---|---|---|
-| Itens fixados | Arquivos, pastas ou links absolutos, inclusive protocolos como `steam://`. A grade aceita arquivos arrastados. | Aparecem primeiro, na ordem de `PinnedItems`. O usuário pode renomear, mover, desafixar e escolher uma imagem. |
-| Pasta monitorada | Arquivos `.lnk` e `.url` diretamente na pasta escolhida. | Aparecem depois dos fixados, ordenados pelo caminho, com comparação cultural sem distinção de maiúsculas. Um caminho já fixado é omitido desta segunda lista. |
+| Itens fixados | Arquivos, pastas ou links absolutos, inclusive protocolos como `steam://`. A grade aceita arquivos arrastados. | Por padrão, aparecem primeiro, na ordem de `PinnedItems`. O usuário pode renomear, mover, desafixar e escolher uma imagem. |
+| Pasta monitorada | Arquivos `.lnk` e `.url` diretamente na pasta escolhida. | Por padrão, aparecem depois dos fixados, ordenados pelo caminho, com comparação cultural sem distinção de maiúsculas. Um caminho já fixado é omitido desta segunda lista. |
 
 O diálogo de arquivos usa `DereferenceLinks = false`. Assim, escolher um atalho preserva seu caminho original. Desafixar remove a referência da coleção. Se o mesmo arquivo também estiver na pasta monitorada, ele poderá reaparecer como item dessa pasta.
+
+**Separadores.** Clique com o botão direito em um item e escolha **Adicionar separador** para inserir uma barra logo depois dele. No fundo da dock, a opção acrescenta a barra ao final. Ela usa a cor de destaque do tema e fica perpendicular à fileira de ícones. Arraste para reposicionar ou clique com o botão direito na barra e escolha **Remover separador**. Cada separador tem um identificador próprio em `ItemOrder` e reaparece na posição salva ao reiniciar.
+
+**Reordenar na própria dock.** Arraste um ícone sobre outro para ocupar a posição dele. O gesto funciona nas quatro bordas e permite intercalar fixados e atalhos da pasta. A lista `ItemOrder` no JSON guarda a ordem personalizada. A grade de configurações acompanha a ordem relativa dos fixados. O gesto, o destaque de destino e a atualização dos indicadores ficam em [MainWindow.Items.cs](DockApp/MainWindow.Items.cs). A conciliação das duas ordens fica em [DockOrder.cs](DockApp/Services/DockOrder.cs).
+
+**Indicador de execução.** Um ponto verde marca executáveis em execução na sessão do usuário, mesmo se abertos fora da dock. A cada dois segundos, enquanto a barra está visível, [RunningApps.cs](DockApp/Services/RunningApps.cs) compara os caminhos dos executáveis com os dos processos acessíveis. Para atalhos tradicionais, lê o destino do `.lnk` durante a carga de itens. Para jogos identificados por `steam://run`, `steam://rungameid` ou `steam.exe -applaunch`, consulta o estado local do jogo informado pelo Steam. Pastas, documentos, sites e alvos sem uma identidade de aplicativo reconhecida continuam disponíveis para abertura.
 
 **Contrato de abertura.** `DockItem.Open()` passa `SourcePath` ao `Process.Start` com `UseShellExecute = true`. Para um caminho local absoluto, preenche `WorkingDirectory` com o diretório pai, quando disponível. Ao receber o próprio `.lnk`, o Shell interpreta seus argumentos e a propriedade **Iniciar em**. Preservar esse fluxo é importante para jogos e programas que dependem de caminhos relativos. Documentos e protocolos usam o aplicativo associado no Windows. Se a chamada falhar, a dock exibe um balão no item clicado.
 
@@ -132,6 +153,7 @@ Os doze perfis são **Grafite, Aurora, Âmbar, Oceano, Floresta, Cerejeira, Neon
 | Propriedades | Padrão | Significado |
 |---|---|---|
 | `PinnedItems`, `FolderPath` | `[]`, `""` | Coleção ordenada e pasta opcional de atalhos. Cada fixado guarda `Path`, `Name` e `IconPath` opcional. |
+| `ItemOrder` | `[]` | Ordem da barra inteira. Cada entrada identifica um item por caminho, URI ou chave de separador. Uma configuração antiga que omite o campo usa a ordem padrão. |
 | `Position`, `EdgeDistance`, `AlwaysOnTop`, `StartWithWindows` | Bottom, 5, false, false | Posicionamento e integração com o Windows. |
 | `BackgroundColor`, `BackgroundColor2`, `UseGradient`, `GradientAngle`, `BackgroundOpacity` | #202020, #101010, false, 90, 0.70 | Cor ou degradê do fundo e sua opacidade. |
 | `BorderColor`, `BorderThickness`, `CornerRadius` | #404040, 1, 18 | Contorno e cantos da barra. |
@@ -140,13 +162,18 @@ Os doze perfis são **Grafite, Aurora, Âmbar, Oceano, Floresta, Cerejeira, Neon
 | `HoverStyle`, `HoverScale`, `AccentColor`, `ShowNames` | Zoom, 1.40, #69CFFF, true | Movimento do mouse, ampliação, cor do brilho e balão de nome. |
 | `AnimateLaunch`, `LaunchStyle`, `IdleOpacity` | true, Bounce, 1 | Ativação e tipo da animação de abertura, opacidade da barra em repouso. |
 
-Exemplo mínimo de uma configuração com dois itens. As propriedades omitidas recebem os inicializadores de `DockSettings`.
+O exemplo posiciona a dock à direita e coloca um separador entre **Notas** e **Portal**. Cada barra tem uma chave com o prefixo `:separator:` seguido de um GUID de 32 dígitos hexadecimais. A chave fica em `ItemOrder`. As propriedades omitidas recebem os padrões de `DockSettings`.
 
 ```json
 {
   "PinnedItems": [
     { "Path": "C:\\Windows\\System32\\notepad.exe", "Name": "Notas", "IconPath": null },
     { "Path": "https://example.org/", "Name": "Portal", "IconPath": null }
+  ],
+  "ItemOrder": [
+    "C:\\Windows\\System32\\notepad.exe",
+    ":separator:bf0478a539e14c37bdee8cf8b9af0116",
+    "https://example.org/"
   ],
   "Position": 3,
   "ShowNames": true,
@@ -177,7 +204,10 @@ A solução não contém projeto de testes automatizados versionado. A compilaç
 |---|---|---|
 | Abertura de atalho | Fixar um `.lnk` com argumentos e **Iniciar em** diferente da pasta do executável. Abrir pelo Explorer e pela dock. | O programa recebe os mesmos argumentos e encontra os mesmos arquivos relativos. |
 | Biblioteca e pasta | Fixar um atalho que também esteja na pasta observada. Criar, renomear e remover outro atalho na pasta. | O fixado aparece uma vez. As mudanças aparecem após o agrupamento dos eventos e a barra se recentraliza. |
-| Persistência | Mudar ordem, nome, imagem e posição. Cancelar uma vez e salvar na segunda. Reiniciar. | Cancelar restaura o estado anterior. Salvar mantém as escolhas após o reinício. |
+| Persistência do diálogo | Nas configurações, mudar ordem, nome, imagem e posição. Cancelar uma vez e salvar na segunda. Reiniciar. | Cancelar descarta as edições do diálogo. Salvar mantém as escolhas após o reinício. |
+| Arraste entre origens | Intercalar um item fixado e dois atalhos da pasta monitorada. Reiniciar e acrescentar outro atalho à pasta. | O gesto move o item sem abri-lo. As posições salvas são recuperadas e o novo atalho aparece depois dos itens ordenados. |
+| Separadores | Adicionar duas barras, mover uma delas, mudar o perfil e passar a dock de inferior para lateral. Remover uma barra e reiniciar. | A barra restante mantém a posição salva, usa a cor de destaque do perfil e passa de vertical para horizontal na lateral. |
+| Indicador de execução | Fixar um executável local, abri-lo pelo Explorer e encerrar todas as suas instâncias. Manter a dock visível. | O ponto verde aparece e desaparece nas consultas seguintes. Para um jogo Steam, repetir com um atalho que contenha o ID do jogo. |
 | Efeitos e recorte | Usar zoom máximo e pouca margem interna. Testar salto, pulso e inclinação no primeiro e no último ícone em cada borda. | O ícone permanece inteiro, inclusive no ponto máximo da animação. |
 | Balões e DPI | Passar o mouse entre itens vizinhos e testar um nome longo perto do canto da tela. Repetir com outra escala do Windows. | A ponta acompanha o item correto e o balão fica legível. |
 | Bandeja e login | Ocultar, mostrar, abrir configurações e sair pela bandeja. Em uma conta de teste, alternar o início automático. | Ocultar preserva o processo. Sair encerra a aplicação. O valor no Registro acompanha a opção salva. |

@@ -193,6 +193,12 @@ public partial class MainWindow : Window
     {
         // Inicializa os componentes definidos no MainWindow.xaml.
         InitializeComponent();
+        _runningTimer.Tick += (_, _) => RefreshRunningApps();
+        IsVisibleChanged += (_, _) =>
+        {
+            _runningTimer.IsEnabled = IsVisible && !_closed;
+            if (IsVisible) RefreshRunningApps();
+        };
 
         // Quando a janela estiver completamente carregada,
         // executa o carregamento inicial da Dock.
@@ -205,6 +211,7 @@ public partial class MainWindow : Window
         Closed += (_, _) =>
         {
             _closed = true;
+            _runningTimer.Stop();
             _folderWatcher?.Dispose();
         };
     }
@@ -278,7 +285,10 @@ public partial class MainWindow : Window
                 var settings = _settings;
                 var items = await _shortcutLoader.LoadAsync(settings);
                 if (!_closed && ReferenceEquals(settings, _settings))
-                    IconsPanel.ItemsSource = items;
+                {
+                    IconsPanel.ItemsSource = DockOrder.Arrange(items, settings);
+                    RefreshRunningApps();
+                }
             } while (_reloadPending && !_closed);
         }
         finally
@@ -303,6 +313,8 @@ public partial class MainWindow : Window
     /// </summary>
     private void ApplyLayout()
     {
+        Resources["SeparatorRotation"] = new RotateTransform(
+            _settings.Position is DockPosition.Left or DockPosition.Right ? 90 : 0);
         // Determina a orientação com base na posição configurada.
         var orientation =
             _settings.Position is DockPosition.Left or DockPosition.Right
@@ -413,6 +425,14 @@ public partial class MainWindow : Window
     /// </summary>
     private void ApplyAppearance()
     {
+        try
+        {
+            Resources["SeparatorBrush"] = new SolidColorBrush((Color)ColorConverter.ConvertFromString(_settings.AccentColor));
+        }
+        catch (FormatException)
+        {
+            Resources["SeparatorBrush"] = Brushes.Silver;
+        }
         UpdateIdleOpacity();
         Topmost = _settings.AlwaysOnTop;
         // ============================================================
@@ -758,6 +778,12 @@ public partial class MainWindow : Window
         {
             return;
         }
+
+        bool launch = ReferenceEquals(element, _pressedIcon) && new Rect(element.RenderSize).Contains(e.GetPosition(element));
+        _pressedIcon = null;
+        if (element.IsMouseCaptured)
+            element.ReleaseMouseCapture();
+        if (!launch || item is DockSeparator) return;
 
         try
         {
