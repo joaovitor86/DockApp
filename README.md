@@ -4,6 +4,20 @@ O DockApp é um lançador de aplicativos para Windows escrito em C# e WPF. A doc
 
 Para começar pelo código, leia [App.xaml.cs](DockApp/App.xaml.cs) para entender o ciclo de vida, [MainWindow.xaml.cs](DockApp/MainWindow.xaml.cs) para seguir uma recarga e [DockSettings.cs](DockApp/DockSettings.cs) para conhecer o estado persistido. Este guia descreve o código do repositório em 26 de novembro de 2026.
 
+## Capturas de tela
+
+| Dock vertical | Menu de contexto |
+|:---:|:---:|
+| <img src="screenshots/Captura%20de%20tela%202026-11-26%20094223.png" height="320" alt="Dock vertical com ícones de programas e jogos"> | ![Menu da dock com as opções Configurações e Ocultar Dock](screenshots/Captura%20de%20tela%202026-11-26%20094253.png) |
+
+### Janela de configurações
+
+| Itens | Aparência |
+|:---:|:---:|
+| ![Aba Itens com a lista de itens fixados e o campo da pasta monitorada](screenshots/Captura%20de%20tela%202026-11-26%20094335.png) | ![Aba Aparência com seletor de perfis e ajustes de fundo, contorno, sombra e espaçamento](screenshots/Captura%20de%20tela%202026-11-26%20094403.png) |
+| **Movimento** | **Comportamento** |
+| ![Aba Movimento com efeitos de mouse e de abertura e controle de opacidade em repouso](screenshots/Captura%20de%20tela%202026-11-26%20094557.png) | ![Aba Comportamento com a posição da dock na tela e as opções de integração com o Windows](screenshots/Captura%20de%20tela%202026-11-26%20094621.png) |
+
 ## Compilar e executar
 
 Use Windows e o SDK .NET 10. O projeto gera um `WinExe` para `net10.0-windows`, com WPF e Windows Forms habilitados. Windows Forms fornece a bandeja e o seletor de cores. As dependências estão no framework e nas bibliotecas nativas do Windows. A solução contém um projeto e pode ser aberta no Visual Studio por [DockApp.slnx](DockApp.slnx).
