@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -118,6 +118,11 @@ public partial class SettingsWindow : Window
     /// </summary>
     private void LoadIntoFields()
     {
+        LoadItems();
+        HoverMode.SelectedValue = _settings.HoverStyle.ToString();
+        ClickMode.SelectedValue = _settings.AnimateLaunch ? _settings.LaunchStyle.ToString() : "None";
+        AccentInput.Text = _settings.AccentColor;
+        IdleSlider.Value = _settings.IdleOpacity;
         // Carrega o caminho da pasta dos atalhos.
         FolderTextBox.Text = _settings.FolderPath;
 
@@ -537,7 +542,8 @@ public partial class SettingsWindow : Window
         // Valida as três cores antes de permitir o salvamento.
         if (!TryParseColor(ColorTextBox.Text, out _) ||
             !TryParseColor(ColorTextBox2.Text, out _) ||
-            !TryParseColor(BorderColorTextBox.Text, out _))
+            !TryParseColor(BorderColorTextBox.Text, out _) ||
+            !TryParseColor(AccentInput.Text, out _))
         {
             // Informa ao usuário que o formato de alguma cor é inválido.
             MessageBox.Show(
@@ -637,6 +643,14 @@ public partial class SettingsWindow : Window
             StartWithWindowsCheckBox.IsChecked == true;
 
         // Persiste as configurações no arquivo settings.json.
+        _settings.AccentColor = AccentInput.Text;
+        _settings.IdleOpacity = IdleSlider.Value;
+        if (Enum.TryParse<HoverEffect>(HoverMode.SelectedValue as string, out var hover))
+            _settings.HoverStyle = hover;
+        _settings.AnimateLaunch = Enum.TryParse<LaunchEffect>(ClickMode.SelectedValue as string, out var launch);
+        if (_settings.AnimateLaunch)
+            _settings.LaunchStyle = launch;
+        ApplyItems();
         ConfigurationService.Save(_settings);
 
         // Atualiza a configuração de inicialização automática
@@ -665,6 +679,30 @@ public partial class SettingsWindow : Window
     /// <param name="e">
     /// Argumentos do evento.
     /// </param>
+    private void PickAccent_Click(object sender, RoutedEventArgs e) => PickColor(AccentInput);
+
+    private void ApplyProfile_Click(object sender, RoutedEventArgs e)
+    {
+        var profile = ((FrameworkElement)sender).Tag as string;
+        var (start, end, border, accent, hover, launch, idle) = profile switch
+        {
+            "Aurora" => ("#142F46", "#332153", "#596995", "#68E4ED", HoverEffect.ZoomAndGlow, LaunchEffect.Pulse, 0.85),
+            "Amber" => ("#42291E", "#211D22", "#886044", "#FFB85C", HoverEffect.Wave, LaunchEffect.Tilt, 0.90),
+            _ => ("#22262C", "#16181B", "#51565E", "#CFD6E0", HoverEffect.Zoom, LaunchEffect.Bounce, 1.0)
+        };
+        ColorTextBox.Text = start;
+        ColorTextBox2.Text = end;
+        BorderColorTextBox.Text = border;
+        AccentInput.Text = accent;
+        UseGradientCheckBox.IsChecked = profile != "Graphite";
+        GradientAngleSlider.Value = 30;
+        OpacitySlider.Value = 0.90;
+        BorderThicknessSlider.Value = 1;
+        HoverMode.SelectedValue = hover.ToString();
+        ClickMode.SelectedValue = launch.ToString();
+        IdleSlider.Value = idle;
+    }
+
     private void Cancel_Click(
         object sender,
         RoutedEventArgs e)

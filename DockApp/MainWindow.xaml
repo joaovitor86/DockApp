@@ -1,4 +1,4 @@
-﻿<Window x:Class="DockApp.MainWindow"
+<Window x:Class="DockApp.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Dock"
@@ -8,6 +8,7 @@
         Background="Transparent"
         ShowInTaskbar="False"
         ResizeMode="NoResize"
+        SizeChanged="Window_SizeChanged"
         WindowStartupLocation="Manual">
 
     <!--
@@ -18,8 +19,7 @@
         pelo método ApplyAppearance() em MainWindow.xaml.cs, a partir
         das configurações salvas em DockSettings.
     -->
-    <Border x:Name="DockBorder"
-            ContextMenuOpening="Border_ContextMenuOpening">
+    <Border x:Name="DockBorder">
 
         <!--
             Menu de contexto da Dock.
@@ -49,86 +49,115 @@
             para permitir que a Dock fique horizontal ou vertical
             dependendo da posição, e que o espaçamento seja configurável.
         -->
-        <ItemsControl x:Name="IconsPanel">
+        <Grid>
+            <Button Panel.ZIndex="1" Content="Adicionar itens…" Padding="8,4" Click="OpenSettings_Click">
+                <Button.Style>
+                    <Style TargetType="Button">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding ElementName=IconsPanel, Path=HasItems}" Value="False">
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+            <ItemsControl x:Name="IconsPanel">
 
-            <ItemsControl.ItemTemplate>
+                <ItemsControl.ItemTemplate>
 
-                <DataTemplate>
+                    <DataTemplate>
 
-                    <!--
-                        Ícone individual da Dock.
+                        <!--
+                            Ícone individual da Dock.
 
-                        IMPORTANTE:
-                        O RenderTransform é definido AQUI, diretamente
-                        no elemento, e não em um Style compartilhado.
+                            IMPORTANTE:
+                            O RenderTransform é definido AQUI, diretamente
+                            no elemento, e não em um Style compartilhado.
 
-                        Um Style compartilhado entre vários ícones é
-                        selado ("frozen") pelo WPF por performance, o
-                        que impede chamar BeginAnimation() diretamente
-                        em código (gera InvalidOperationException:
-                        "o objeto está selado ou congelado").
+                            Um Style compartilhado entre vários ícones é
+                            selado ("frozen") pelo WPF por performance, o
+                            que impede chamar BeginAnimation() diretamente
+                            em código (gera InvalidOperationException:
+                            "o objeto está selado ou congelado").
 
-                        Como o RenderTransform é declarado aqui dentro
-                        do DataTemplate, cada ícone gerado recebe sua
-                        própria instância de TransformGroup, isolada
-                        das demais, permitindo animar livremente tanto
-                        o "quique" de lançamento (PlayLaunchBounce)
-                        quanto o zoom de hover (Icon_MouseEnter/Leave),
-                        ambos em MainWindow.xaml.cs.
+                            Como o RenderTransform é declarado aqui dentro
+                            do DataTemplate, cada ícone gerado recebe sua
+                            própria instância de TransformGroup, isolada
+                            das demais, permitindo animar livremente tanto
+                            o "quique" de lançamento (PlayLaunchBounce)
+                            quanto o zoom de hover (Icon_MouseEnter/Leave),
+                            ambos em MainWindow.xaml.cs.
 
-                        Source:
-                            Recebe DockItem.Icon.
+                            Source:
+                                Recebe DockItem.Icon.
 
-                        Width/Height:
-                            Recebem o tamanho configurado
-                            na MainWindow.
+                            Width/Height:
+                                Recebem o tamanho configurado
+                                na MainWindow.
 
-                        Tag:
-                            Guarda o próprio DockItem para
-                            ser recuperado pelo evento Icon_Click.
+                            Tag:
+                                Guarda o próprio DockItem para
+                                ser recuperado pelo evento Icon_Click.
 
-                        MouseEnter/MouseLeave:
-                            Disparam a animação de zoom no hover,
-                            cuja intensidade vem de DockSettings.HoverScale.
-                    -->
-                    <Image Source="{Binding Icon}"
-                           Width="{Binding IconSize, RelativeSource={RelativeSource AncestorType=Window}}"
-                           Height="{Binding IconSize, RelativeSource={RelativeSource AncestorType=Window}}"
-                           HorizontalAlignment="Center"
-                           VerticalAlignment="Center"
-                           RenderTransformOrigin="0.5,0.5"
-                           Cursor="Hand"
-                           Tag="{Binding}"
-                           MouseLeftButtonUp="Icon_Click"
-                           MouseEnter="Icon_MouseEnter"
-                           MouseLeave="Icon_MouseLeave">
+                            MouseEnter/MouseLeave:
+                                Disparam a animação de zoom no hover,
+                                cuja intensidade vem de DockSettings.HoverScale.
+                        -->
+                        <Grid Background="Transparent"
+                               Width="{Binding IconSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                               Height="{Binding IconSize, RelativeSource={RelativeSource AncestorType=Window}}"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               RenderTransformOrigin="0.5,0.5"
+                               Cursor="Hand"
+                               Tag="{Binding}"
+                               MouseLeftButtonUp="Icon_Click"
+                               MouseEnter="Icon_MouseEnter"
+                               MouseLeave="Icon_MouseLeave">
 
-                        <Image.RenderTransform>
+                            <Grid.RenderTransform>
 
-                            <TransformGroup>
+                                <TransformGroup>
 
-                                <!-- Escala utilizada pelo efeito de hover. -->
-                                <ScaleTransform ScaleX="1"
-                                                ScaleY="1"/>
+                                    <!-- Escala utilizada pelo efeito de hover. -->
+                                    <ScaleTransform ScaleX="1"
+                                                    ScaleY="1"/>
 
-                                <!--
-                                    Deslocamento utilizado pelo efeito
-                                    de lançamento do aplicativo.
-                                -->
-                                <TranslateTransform X="0"
-                                                      Y="0"/>
+                                    <!--
+                                        Deslocamento utilizado pelo efeito
+                                        de lançamento do aplicativo.
+                                    -->
+                                    <TranslateTransform X="0"
+                                                          Y="0"/>
+                                    <ScaleTransform/>
+                                    <RotateTransform/>
 
-                            </TransformGroup>
+                                </TransformGroup>
 
-                        </Image.RenderTransform>
+                            </Grid.RenderTransform>
+                            <TextBlock Text="◆" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Icon}" Value="{x:Null}">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <Image Source="{Binding Icon}"/>
 
-                    </Image>
+                        </Grid>
 
-                </DataTemplate>
+                    </DataTemplate>
 
-            </ItemsControl.ItemTemplate>
+                </ItemsControl.ItemTemplate>
 
-        </ItemsControl>
+            </ItemsControl>
+        </Grid>
 
     </Border>
 

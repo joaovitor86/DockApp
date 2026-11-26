@@ -1,4 +1,4 @@
-﻿// Importa recursos para iniciar processos do Windows,
+// Importa recursos para iniciar processos do Windows,
 // como executáveis, URLs e protocolos (steam://, etc.).
 using System.Diagnostics;
 
@@ -138,7 +138,7 @@ public partial class MainWindow : Window
     /// Também evita que a Dock fique completamente colada
     /// à borda da tela ou à área ocupada pela barra de tarefas.
     /// </summary>
-    private const double GapFromEdge = 5;
+    private double GapFromEdge => _settings.EdgeDistance;
 
     /// <summary>
     /// Configurações atualmente carregadas pelo DockApp.
@@ -148,6 +148,10 @@ public partial class MainWindow : Window
     /// configurações persistidas através do ConfigurationService.
     /// </summary>
     private DockSettings _settings = new();
+    private ShortcutLoader _shortcutLoader = new();
+    private bool _loadingIcons;
+    private bool _reloadPending;
+    private bool _closed;
 
     /// <summary>
     /// Serviço responsável por monitorar a pasta configurada
@@ -190,10 +194,16 @@ public partial class MainWindow : Window
         // Quando a janela estiver completamente carregada,
         // executa o carregamento inicial da Dock.
         Loaded += (_, _) => Reload();
+        MouseEnter += (_, _) => UpdateIdleOpacity();
+        MouseLeave += (_, _) => UpdateIdleOpacity();
 
         // Quando a janela for fechada, libera os recursos
         // utilizados pelo monitoramento da pasta.
-        Closed += (_, _) => _folderWatcher?.Dispose();
+        Closed += (_, _) =>
+        {
+            _closed = true;
+            _folderWatcher?.Dispose();
+        };
     }
 
     /// <summary>
@@ -211,6 +221,7 @@ public partial class MainWindow : Window
     {
         // Carrega as configurações persistidas pelo aplicativo.
         _settings = ConfigurationService.Load();
+        _shortcutLoader = new ShortcutLoader();
 
         // Aplica cor/degradê, opacidade, borda, sombra, padding,
         // raio das bordas e tamanho dos ícones.
@@ -240,15 +251,37 @@ public partial class MainWindow : Window
     /// Carrega os atalhos da pasta configurada e os atribui
     /// ao ItemsControl responsável por exibir os ícones.
     /// </summary>
-    private void LoadIcons()
+    private async void LoadIcons()
     {
         // O ShortcutLoader interpreta os arquivos .lnk e .url
         // existentes na pasta configurada.
         //
         // A lista resultante é atribuída ao ItemsSource do ItemsControl,
         // fazendo com que o WPF gere visualmente os ícones.
-        IconsPanel.ItemsSource =
-            ShortcutLoader.LoadFolder(_settings.FolderPath);
+        if (_closed)
+            return;
+        if (_loadingIcons)
+        {
+            _reloadPending = true;
+            return;
+        }
+
+        _loadingIcons = true;
+        try
+        {
+            do
+            {
+                _reloadPending = false;
+                var settings = _settings;
+                var items = await _shortcutLoader.LoadAsync(settings);
+                if (!_closed && ReferenceEquals(settings, _settings))
+                    IconsPanel.ItemsSource = items;
+            } while (_reloadPending && !_closed);
+        }
+        finally
+        {
+            _loadingIcons = false;
+        }
     }
 
     /// <summary>
@@ -377,6 +410,8 @@ public partial class MainWindow : Window
     /// </summary>
     private void ApplyAppearance()
     {
+        UpdateIdleOpacity();
+        Topmost = _settings.AlwaysOnTop;
         // ============================================================
         // FUNDO (sólido ou degradê)
         // ============================================================
@@ -662,7 +697,7 @@ public partial class MainWindow : Window
     /// Executado quando o usuário clica em um ícone da Dock.
     ///
     /// Obtém o DockItem associado ao elemento clicado e tenta
-    /// executar seu TargetPath utilizando o Shell do Windows.
+    /// abrir a origem utilizando o Shell do Windows.
     ///
     /// Após a execução bem-sucedida, reproduz a animação
     /// de "quique" do ícone. Caso a execução falhe, exibe um
@@ -693,22 +728,11 @@ public partial class MainWindow : Window
 
         try
         {
-            // Solicita ao Windows que abra o TargetPath.
-            //
-            // UseShellExecute = true permite utilizar:
-            // - Executáveis.
-            // - URLs.
-            // - Protocolos personalizados.
-            // - Outros destinos reconhecidos pelo Shell.
-            Process.Start(
-                new ProcessStartInfo(item.TargetPath)
-                {
-                    Arguments = item.Arguments,
-                    UseShellExecute = true
-                });
+            item.Open();
 
             // Executa o efeito visual de lançamento do ícone.
-            PlayLaunchBounce(element);
+            if (_settings.AnimateLaunch)
+                PlayLaunchEffect(element);
         }
         catch
         {
@@ -786,7 +810,7 @@ public partial class MainWindow : Window
     /// <param name="element">
     /// Elemento visual que representa o ícone clicado.
     /// </param>
-    private void PlayLaunchBounce(FrameworkElement element)
+    private void PlayLaunchEffect(FrameworkElement element)
     {
         // Garante que o TransformGroup deste ícone possa ser
         // animado (ver EnsureAnimatableTransformGroup para detalhes
@@ -795,6 +819,31 @@ public partial class MainWindow : Window
 
         if (group == null)
             return;
+
+        var accentMotion = new DoubleAnimation
+        {
+            Duration = TimeSpan.FromMilliseconds(145),
+            AutoReverse = true,
+            FillBehavior = FillBehavior.Stop,
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+        };
+        if (_settings.LaunchStyle == LaunchEffect.Tilt)
+        {
+            accentMotion.From = 0;
+            accentMotion.To = 12;
+            group.Children.OfType<RotateTransform>().Single()
+                .BeginAnimation(RotateTransform.AngleProperty, accentMotion);
+            return;
+        }
+        if (_settings.LaunchStyle == LaunchEffect.Pulse)
+        {
+            accentMotion.From = 1;
+            accentMotion.To = 0.82;
+            var pulse = group.Children.OfType<ScaleTransform>().Last();
+            pulse.BeginAnimation(ScaleTransform.ScaleXProperty, accentMotion);
+            pulse.BeginAnimation(ScaleTransform.ScaleYProperty, accentMotion);
+            return;
+        }
 
         // Procura dentro do TransformGroup a transformação
         // responsável pelo deslocamento do elemento.
@@ -885,170 +934,90 @@ public partial class MainWindow : Window
         translate.BeginAnimation(property, bounce);
     }
 
-    /// <summary>
-    /// Constrói e exibe um balão flutuante no estilo dos tooltips
-    /// nativos do macOS, ancorado a um elemento visual através
-    /// de um Popup:
-    ///
-    /// - Fundo escuro semitransparente, cantos arredondados.
-    /// - Texto branco curto.
-    /// - Uma pequena "seta" apontando para o elemento ancorado.
-    /// - Entrada com fade-in + leve deslize.
-    ///
-    /// Este método apenas CRIA e ABRE o balão (com a animação de
-    /// entrada); ele não o fecha automaticamente. Cada chamador
-    /// decide quando fechar o Popup retornado (por exemplo, após
-    /// um tempo fixo, ou quando o mouse sai do elemento), utilizando
-    /// <see cref="FadeOutAndClose"/>.
-    /// </summary>
-    /// <param name="anchor">
-    /// Elemento visual ao qual o balão será ancorado.
-    /// </param>
-    /// <param name="text">
-    /// Texto exibido dentro do balão.
-    /// </param>
-    /// <param name="appearsBelow">
-    /// Quando <c>true</c>, o balão nasce abaixo do elemento ancorado
-    /// (com a seta apontando para cima); quando <c>false</c>, nasce
-    /// acima (com a seta apontando para baixo).
-    /// </param>
-    /// <returns>
-    /// O Popup já criado, aberto e com a animação de entrada
-    /// iniciada.
-    /// </returns>
-    private Popup CreateStyledPopup(
-        FrameworkElement anchor,
-        string text,
-        bool appearsBelow)
+    private Popup CreateStyledPopup(FrameworkElement icon, string text)
     {
-        // Cor de fundo escura e semitransparente utilizada
-        // tanto pelo corpo do balão quanto pela "seta".
-        var bubbleBrush =
-            new SolidColorBrush(
-                Color.FromArgb(0xEB, 0x1C, 0x1C, 0x1E));
-
-        // Cria a "seta" do balão: um pequeno quadrado rotacionado
-        // 45 graus, com uma margem negativa que o sobrepõe
-        // ligeiramente ao corpo do balão, dando a impressão
-        // de uma ponta única e contínua.
-        var arrow =
-            new Border
-            {
-                Width = 10,
-                Height = 10,
-                Background = bubbleBrush,
-                CornerRadius = new CornerRadius(2),
-                HorizontalAlignment = HorizontalAlignment.Center,
-                RenderTransform = new RotateTransform(45),
-                Margin =
-                    appearsBelow
-                        ? new Thickness(0, 0, 0, -5)
-                        : new Thickness(0, -5, 0, 0)
-            };
-
-        // Cria o corpo do balão.
-        var bubble =
-            new Border
-            {
-                Background = bubbleBrush,
-                CornerRadius = new CornerRadius(6),
-                Padding = new Thickness(12, 6, 12, 6),
-                Child =
-                    new TextBlock
-                    {
-                        Text = text,
-                        Foreground = Brushes.White,
-                        FontSize = 13
-                    }
-            };
-
-        // Organiza a seta e o corpo do balão na ordem visual correta,
-        // dependendo de qual lado o balão vai aparecer.
-        var content =
-            new StackPanel
-            {
-                HorizontalAlignment = HorizontalAlignment.Center
-            };
-
-        if (appearsBelow)
+        // O ContentPresenter permanece estável enquanto o ícone anima o zoom.
+        var anchor = ItemsControl.ContainerFromElement(IconsPanel, icon) as FrameworkElement ?? icon;
+        var position = _settings.Position;
+        var lateral = position is DockPosition.Left or DockPosition.Right;
+        var brush = new SolidColorBrush(Color.FromArgb(0xEB, 0x1C, 0x1C, 0x1E));
+        var (side, triangle) = position switch
         {
-            // Balão abaixo do elemento: a seta fica no topo,
-            // apontando para cima, em direção ao elemento.
-            content.Children.Add(arrow);
-            content.Children.Add(bubble);
-        }
-        else
+            DockPosition.Left => (Dock.Left, "M 0,6 L 6,0 L 6,12 Z"),
+            DockPosition.Right => (Dock.Right, "M 6,6 L 0,0 L 0,12 Z"),
+            DockPosition.Top => (Dock.Top, "M 6,0 L 0,6 L 12,6 Z"),
+            _ => (Dock.Bottom, "M 6,6 L 0,0 L 12,0 Z")
+        };
+
+        var arrow = new System.Windows.Shapes.Path
         {
-            // Balão acima do elemento: a seta fica embaixo,
-            // apontando para baixo, em direção ao elemento.
-            content.Children.Add(bubble);
-            content.Children.Add(arrow);
-        }
-
-        // Prepara a transformação utilizada pela animação de
-        // entrada: o balão começa ligeiramente deslocado
-        // verticalmente e desliza até sua posição final.
-        var slideTransform =
-            new TranslateTransform(
-                0,
-                appearsBelow ? -4 : 4);
-
-        content.RenderTransform = slideTransform;
-
-        // Começa totalmente transparente para a animação de fade-in.
-        content.Opacity = 0;
-
-        // Cria o Popup que hospeda o balão, ancorado ao elemento
-        // informado.
-        //
-        // AllowsTransparency permite que o fundo semitransparente
-        // do balão seja exibido corretamente sobre a área
-        // de trabalho.
-        var popup =
-            new Popup
+            Data = Geometry.Parse(triangle),
+            Fill = brush,
+            Width = lateral ? 6 : 12,
+            Height = lateral ? 12 : 6,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        var content = new DockPanel();
+        DockPanel.SetDock(arrow, side);
+        content.Children.Add(arrow);
+        content.Children.Add(new Border
+        {
+            Background = brush,
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(12, 6, 12, 6),
+            MaxWidth = 360,
+            Child = new TextBlock
             {
-                PlacementTarget = anchor,
-                Placement =
-                    appearsBelow
-                        ? PlacementMode.Bottom
-                        : PlacementMode.Top,
-                AllowsTransparency = true,
-                StaysOpen = true,
-                PopupAnimation = PopupAnimation.None,
-                VerticalOffset = appearsBelow ? 6 : -6,
-                Child = content,
-                IsOpen = true
-            };
+                Text = text, Foreground = Brushes.White, FontSize = 13,
+                TextWrapping = TextWrapping.Wrap
+            }
+        });
 
-        // Anima a entrada do balão: fade-in combinado com um leve
-        // deslize até a posição final, dando uma sensação suave
-        // de "aparecer", em vez de surgir abruptamente.
-        content.BeginAnimation(
-            UIElement.OpacityProperty,
-            new DoubleAnimation
+        const double gap = 6;
+        var popup = new Popup
+        {
+            PlacementTarget = anchor,
+            Placement = PlacementMode.Custom,
+            AllowsTransparency = true,
+            IsHitTestVisible = false,
+            StaysOpen = true,
+            Child = content,
+            CustomPopupPlacementCallback = (size, target, _) =>
             {
-                To = 1,
-                Duration = TimeSpan.FromMilliseconds(120),
-                EasingFunction =
-                    new QuadraticEase
-                    {
-                        EasingMode = EasingMode.EaseOut
-                    }
-            });
+                var x = (target.Width - size.Width) / 2;
+                var y = (target.Height - size.Height) / 2;
+                // Reserve espaço para o zoom do ícone mesmo durante a animação.
+                var scale = UsesHoverZoom ? Math.Max(1, _settings.HoverScale) : 1;
+                var dx = gap + icon.ActualWidth * (scale - 1) / 2;
+                var dy = gap + icon.ActualHeight * (scale - 1) / 2;
+                var point = position switch
+                {
+                    DockPosition.Left => new Point(target.Width + dx, y),
+                    DockPosition.Right => new Point(-size.Width - dx, y),
+                    DockPosition.Top => new Point(x, target.Height + dy),
+                    _ => new Point(x, -size.Height - dy)
+                };
+                return [new CustomPopupPlacement(point,
+                    lateral ? PopupPrimaryAxis.Vertical : PopupPrimaryAxis.Horizontal)];
+            }
+        };
 
-        slideTransform.BeginAnimation(
-            TranslateTransform.YProperty,
-            new DoubleAnimation
-            {
-                To = 0,
-                Duration = TimeSpan.FromMilliseconds(120),
-                EasingFunction =
-                    new QuadraticEase
-                    {
-                        EasingMode = EasingMode.EaseOut
-                    }
-            });
-
+        popup.Opened += (_, _) =>
+        {
+            // O Windows pode deslocar o popup junto aos cantos do monitor.
+            // Alinhe a ponta depois desse ajuste usando o centro real do item.
+            var center = content.PointFromScreen(icon.PointToScreen(
+                new Point(icon.ActualWidth / 2, icon.ActualHeight / 2)));
+            var extent = lateral ? content.ActualHeight : content.ActualWidth;
+            var offset = Math.Clamp(lateral ? center.Y : center.X, 6, extent - 6) - extent / 2;
+            arrow.RenderTransform = lateral
+                ? new TranslateTransform(0, offset)
+                : new TranslateTransform(offset, 0);
+        };
+        popup.IsOpen = true;
+        content.BeginAnimation(UIElement.OpacityProperty,
+            new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(120)));
         return popup;
     }
 
@@ -1102,20 +1071,7 @@ public partial class MainWindow : Window
     /// </param>
     private void ShowErrorTooltip(FrameworkElement icon)
     {
-        // Decide se o balão nasce abaixo ou acima do ícone.
-        var appearsBelow =
-            _settings.Position == DockPosition.Top;
-
-        // Cria e abre o balão, com o texto genérico do erro.
-        //
-        // Propositalmente não exibe a mensagem técnica da exceção:
-        // o objetivo é um aviso curto e direto, no mesmo tom
-        // dos avisos nativos do macOS.
-        var popup =
-            CreateStyledPopup(
-                icon,
-                "Não foi possível abrir",
-                appearsBelow);
+        var popup = CreateStyledPopup(icon, "Não foi possível abrir");
 
         // Agenda o desaparecimento automático do balão depois
         // de alguns segundos, sem exigir nenhuma ação do usuário.
@@ -1169,13 +1125,8 @@ public partial class MainWindow : Window
             _nameTooltipDelayTimer?.Stop();
             _nameTooltipDelayTimer = null;
 
-            // Decide se o balão nasce abaixo ou acima do ícone,
-            // seguindo a mesma regra do balão de erro.
-            var appearsBelow =
-                _settings.Position == DockPosition.Top;
-
-            _nameTooltipPopup =
-                CreateStyledPopup(icon, name, appearsBelow);
+            if (icon.IsMouseOver && icon.IsLoaded)
+                _nameTooltipPopup = CreateStyledPopup(icon, name);
         };
 
         _nameTooltipDelayTimer.Start();
@@ -1231,9 +1182,20 @@ public partial class MainWindow : Window
     /// </param>
     private void Icon_MouseEnter(object sender, MouseEventArgs e)
     {
-        AnimateHoverScale(
-            sender as FrameworkElement,
-            _settings.HoverScale);
+        if (UsesHoverZoom)
+            AnimateHoverScale(sender as FrameworkElement, _settings.HoverScale);
+        if (sender is FrameworkElement activeIcon)
+            SetHoverNeighbors(activeIcon, true);
+
+        if (sender is FrameworkElement hovered &&
+            _settings.HoverStyle is HoverEffect.Glow or HoverEffect.ZoomAndGlow)
+        {
+            var glow = new DropShadowEffect { ShadowDepth = 0, BlurRadius = 14,
+                Color = (Color)ColorConverter.ConvertFromString(_settings.AccentColor) };
+            hovered.Effect = glow;
+            glow.BeginAnimation(DropShadowEffect.OpacityProperty,
+                new DoubleAnimation(0, 0.9, TimeSpan.FromMilliseconds(140)));
+        }
 
         // Agenda o tooltip de nome, caso o elemento realmente
         // represente um DockItem válido.
@@ -1242,7 +1204,8 @@ public partial class MainWindow : Window
                 Tag: DockItem item
             } element)
         {
-            ScheduleNameTooltip(element, item.Name);
+            if (_settings.ShowNames)
+                ScheduleNameTooltip(element, item.Name);
         }
     }
 
@@ -1262,14 +1225,52 @@ public partial class MainWindow : Window
     /// </param>
     private void Icon_MouseLeave(object sender, MouseEventArgs e)
     {
-        AnimateHoverScale(
-            sender as FrameworkElement,
-            1.0);
+        if (UsesHoverZoom)
+            AnimateHoverScale(sender as FrameworkElement, 1);
+        if (sender is FrameworkElement hovered)
+        {
+            hovered.Effect = null;
+            SetHoverNeighbors(hovered, false);
+        }
 
         // Cancela um atraso pendente (o tooltip ainda não apareceu)
         // e fecha o tooltip caso já esteja visível.
         CancelPendingNameTooltip();
         CloseNameTooltip();
+    }
+
+    private bool UsesHoverZoom => _settings.HoverStyle is HoverEffect.Zoom or HoverEffect.ZoomAndGlow or HoverEffect.Wave;
+
+    private void SetHoverNeighbors(FrameworkElement icon, bool active)
+    {
+        if (ItemsControl.ContainerFromElement(IconsPanel, icon) is not ContentPresenter container)
+            return;
+        System.Windows.Controls.Panel.SetZIndex(container, active ? 1 : 0);
+        if (_settings.HoverStyle != HoverEffect.Wave)
+            return;
+
+        var generator = IconsPanel.ItemContainerGenerator;
+        var index = generator.IndexFromContainer(container);
+        for (int distance = -2; distance <= 2; distance++)
+        {
+            var neighborIndex = index + distance;
+            if (distance == 0 || neighborIndex < 0 || neighborIndex >= IconsPanel.Items.Count)
+                continue;
+            if (generator.ContainerFromIndex(neighborIndex) is ContentPresenter neighbor &&
+                VisualTreeHelper.GetChildrenCount(neighbor) > 0)
+            {
+                var neighborIcon = VisualTreeHelper.GetChild(neighbor, 0) as FrameworkElement;
+                double weight = Math.Abs(distance) == 1 ? 0.50 : 0.20;
+                AnimateHoverScale(neighborIcon, active ? 1 + (_settings.HoverScale - 1) * weight : 1);
+            }
+        }
+    }
+
+    private void UpdateIdleOpacity()
+    {
+        double target = IsMouseOver ? 1 : Math.Clamp(_settings.IdleOpacity, 0.25, 1);
+        DockBorder.BeginAnimation(OpacityProperty,
+            new DoubleAnimation(target, TimeSpan.FromMilliseconds(180)));
     }
 
     /// <summary>
@@ -1336,34 +1337,6 @@ public partial class MainWindow : Window
         scaleTransform.BeginAnimation(
             ScaleTransform.ScaleYProperty,
             animation);
-    }
-
-    /// <summary>
-    /// Controla a abertura do menu de contexto da Dock.
-    ///
-    /// Quando o menu é solicitado diretamente sobre um ícone,
-    /// o evento é cancelado para evitar que o menu geral da Dock
-    /// seja exibido sobre o item.
-    /// </summary>
-    /// <param name="sender">
-    /// Elemento que recebeu a solicitação do menu de contexto.
-    /// </param>
-    /// <param name="e">
-    /// Argumentos relacionados à abertura do menu.
-    /// </param>
-    private void Border_ContextMenuOpening(
-        object sender,
-        ContextMenuEventArgs e)
-    {
-        // Se a origem do evento pertence a um DockItem,
-        // cancela a abertura do menu.
-        if (e.OriginalSource is FrameworkElement
-            {
-                DataContext: DockItem
-            })
-        {
-            e.Handled = true;
-        }
     }
 
     /// <summary>

@@ -1,4 +1,7 @@
-﻿namespace DockApp.Models;
+namespace DockApp.Models;
+
+public enum HoverEffect { Zoom, Glow, ZoomAndGlow, None, Wave }
+public enum LaunchEffect { Bounce, Pulse, Tilt }
 
 /// <summary>
 /// Representa todas as configurações persistentes da DockApp.
@@ -8,6 +11,16 @@
 /// </summary>
 public class DockSettings
 {
+    public List<PinnedItem> PinnedItems { get; set; } = [];
+    public double EdgeDistance { get; set; } = 5;
+    public bool AlwaysOnTop { get; set; }
+    public bool ShowNames { get; set; } = true;
+    public bool AnimateLaunch { get; set; } = true;
+    public HoverEffect HoverStyle { get; set; } = HoverEffect.Zoom;
+    public LaunchEffect LaunchStyle { get; set; } = LaunchEffect.Bounce;
+    public string AccentColor { get; set; } = "#69CFFF";
+    public double IdleOpacity { get; set; } = 1;
+
     // ================================================================
     // ATALHOS
     // ================================================================
@@ -15,7 +28,7 @@ public class DockSettings
     /// <summary>
     /// Pasta onde ficam os atalhos que serão exibidos na Dock.
     /// </summary>
-    public string FolderPath { get; set; } = @"D:\MinhaDock";
+    public string FolderPath { get; set; } = "";
 
 
     // ================================================================
