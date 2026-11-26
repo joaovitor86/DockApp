@@ -139,6 +139,9 @@ public partial class MainWindow : Window
     /// à borda da tela ou à área ocupada pela barra de tarefas.
     /// </summary>
     private double GapFromEdge => _settings.EdgeDistance;
+    private const double BounceDistance = 16;
+    private const double TiltAngle = 12;
+    private const double HoverBlurRadius = 14;
 
     /// <summary>
     /// Configurações atualmente carregadas pelo DockApp.
@@ -565,6 +568,36 @@ public partial class MainWindow : Window
                 _settings.DockPaddingVertical,
                 _settings.DockPaddingHorizontal,
                 _settings.DockPaddingVertical);
+
+        DockBorder.Margin = AnimationMargin();
+    }
+
+    private Thickness AnimationMargin()
+    {
+        // RenderTransform não participa do SizeToContent. Reserve o envelope
+        // do ícone antes do clique para a janela não mudar de tamanho no salto.
+        double scale = UsesHoverZoom ? Math.Max(1, _settings.HoverScale) : 1;
+        double blur = _settings.HoverStyle is HoverEffect.Glow or HoverEffect.ZoomAndGlow
+            ? HoverBlurRadius : 0;
+        double radius = (_settings.IconSize / 2 + blur) * scale;
+        if (_settings.AnimateLaunch && _settings.LaunchStyle == LaunchEffect.Tilt)
+        {
+            double angle = TiltAngle * Math.PI / 180;
+            radius *= Math.Cos(angle) + Math.Sin(angle);
+        }
+
+        double overflow = radius - _settings.IconSize / 2;
+        double bounce = _settings.AnimateLaunch && _settings.LaunchStyle == LaunchEffect.Bounce
+            ? BounceDistance : 0;
+        double inset = _settings.BorderThickness + _settings.IconSpacing / 2;
+        double x = overflow - _settings.DockPaddingHorizontal - inset;
+        double y = overflow - _settings.DockPaddingVertical - inset;
+        var side = _settings.Position;
+        return new Thickness(
+            Math.Ceiling(Math.Max(0, x + (side == DockPosition.Right ? bounce : 0))),
+            Math.Ceiling(Math.Max(0, y + (side == DockPosition.Bottom ? bounce : 0))),
+            Math.Ceiling(Math.Max(0, x + (side == DockPosition.Left ? bounce : 0))),
+            Math.Ceiling(Math.Max(0, y + (side == DockPosition.Top ? bounce : 0))));
     }
 
     /// <summary>
@@ -644,7 +677,7 @@ public partial class MainWindow : Window
                 Top =
                     workArea.Bottom -
                     ActualHeight -
-                    GapFromEdge;
+                    Math.Max(0, GapFromEdge - DockBorder.Margin.Bottom);
 
                 break;
 
@@ -658,7 +691,7 @@ public partial class MainWindow : Window
                 // Posiciona a Dock próxima à parte superior.
                 Top =
                     workArea.Top +
-                    GapFromEdge;
+                    Math.Max(0, GapFromEdge - DockBorder.Margin.Top);
 
                 break;
 
@@ -667,7 +700,7 @@ public partial class MainWindow : Window
                 // Posiciona a Dock próxima à borda esquerda.
                 Left =
                     workArea.Left +
-                    GapFromEdge;
+                    Math.Max(0, GapFromEdge - DockBorder.Margin.Left);
 
                 // Centraliza verticalmente.
                 Top =
@@ -682,7 +715,7 @@ public partial class MainWindow : Window
                 Left =
                     workArea.Right -
                     ActualWidth -
-                    GapFromEdge;
+                    Math.Max(0, GapFromEdge - DockBorder.Margin.Right);
 
                 // Centraliza verticalmente.
                 Top =
@@ -830,7 +863,7 @@ public partial class MainWindow : Window
         if (_settings.LaunchStyle == LaunchEffect.Tilt)
         {
             accentMotion.From = 0;
-            accentMotion.To = 12;
+            accentMotion.To = TiltAngle;
             group.Children.OfType<RotateTransform>().Single()
                 .BeginAnimation(RotateTransform.AngleProperty, accentMotion);
             return;
@@ -883,16 +916,16 @@ public partial class MainWindow : Window
             _settings.Position switch
             {
                 // Dock no topo -> movimento para baixo.
-                DockPosition.Top => 16,
+                DockPosition.Top => BounceDistance,
 
                 // Dock à esquerda -> movimento para a direita.
-                DockPosition.Left => 16,
+                DockPosition.Left => BounceDistance,
 
                 // Dock à direita -> movimento para a esquerda.
-                DockPosition.Right => -16,
+                DockPosition.Right => -BounceDistance,
 
                 // Dock embaixo -> movimento para cima.
-                _ => -16
+                _ => -BounceDistance
             };
 
         // Cria a animação de deslocamento.
@@ -1190,7 +1223,7 @@ public partial class MainWindow : Window
         if (sender is FrameworkElement hovered &&
             _settings.HoverStyle is HoverEffect.Glow or HoverEffect.ZoomAndGlow)
         {
-            var glow = new DropShadowEffect { ShadowDepth = 0, BlurRadius = 14,
+            var glow = new DropShadowEffect { ShadowDepth = 0, BlurRadius = HoverBlurRadius,
                 Color = (Color)ColorConverter.ConvertFromString(_settings.AccentColor) };
             hovered.Effect = glow;
             glow.BeginAnimation(DropShadowEffect.OpacityProperty,

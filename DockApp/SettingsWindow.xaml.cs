@@ -118,6 +118,8 @@ public partial class SettingsWindow : Window
     /// </summary>
     private void LoadIntoFields()
     {
+        ProfilePicker.ItemsSource = DockProfile.All;
+        ProfilePicker.SelectedIndex = 0;
         LoadItems();
         HoverMode.SelectedValue = _settings.HoverStyle.ToString();
         ClickMode.SelectedValue = _settings.AnimateLaunch ? _settings.LaunchStyle.ToString() : "None";
@@ -683,24 +685,20 @@ public partial class SettingsWindow : Window
 
     private void ApplyProfile_Click(object sender, RoutedEventArgs e)
     {
-        var profile = ((FrameworkElement)sender).Tag as string;
-        var (start, end, border, accent, hover, launch, idle) = profile switch
-        {
-            "Aurora" => ("#142F46", "#332153", "#596995", "#68E4ED", HoverEffect.ZoomAndGlow, LaunchEffect.Pulse, 0.85),
-            "Amber" => ("#42291E", "#211D22", "#886044", "#FFB85C", HoverEffect.Wave, LaunchEffect.Tilt, 0.90),
-            _ => ("#22262C", "#16181B", "#51565E", "#CFD6E0", HoverEffect.Zoom, LaunchEffect.Bounce, 1.0)
-        };
-        ColorTextBox.Text = start;
-        ColorTextBox2.Text = end;
-        BorderColorTextBox.Text = border;
-        AccentInput.Text = accent;
-        UseGradientCheckBox.IsChecked = profile != "Graphite";
+        if (ProfilePicker.SelectedItem is not DockProfile profile)
+            return;
+
+        ColorTextBox.Text = profile.Start;
+        ColorTextBox2.Text = profile.End;
+        BorderColorTextBox.Text = profile.Border;
+        AccentInput.Text = profile.Accent;
+        UseGradientCheckBox.IsChecked = profile.Gradient;
         GradientAngleSlider.Value = 30;
         OpacitySlider.Value = 0.90;
         BorderThicknessSlider.Value = 1;
-        HoverMode.SelectedValue = hover.ToString();
-        ClickMode.SelectedValue = launch.ToString();
-        IdleSlider.Value = idle;
+        HoverMode.SelectedValue = profile.Hover.ToString();
+        ClickMode.SelectedValue = profile.Launch?.ToString() ?? "None";
+        IdleSlider.Value = profile.IdleOpacity;
     }
 
     private void Cancel_Click(

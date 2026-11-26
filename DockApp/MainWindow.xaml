@@ -19,6 +19,7 @@
         pelo método ApplyAppearance() em MainWindow.xaml.cs, a partir
         das configurações salvas em DockSettings.
     -->
+    <Grid>
     <Border x:Name="DockBorder">
 
         <!--
@@ -160,5 +161,6 @@
         </Grid>
 
     </Border>
+    </Grid>
 
 </Window>

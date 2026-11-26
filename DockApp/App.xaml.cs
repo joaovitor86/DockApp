@@ -1,4 +1,4 @@
-﻿// Importa recursos de diagnóstico, utilizados para registrar
+// Importa recursos de diagnóstico, utilizados para registrar
 // mensagens de depuração e o log de exceções não tratadas.
 using System.Diagnostics;
 
@@ -46,14 +46,6 @@ namespace DockApp;
 /// </summary>
 public partial class App : Application
 {
-    /// <summary>
-    /// Nome do arquivo de ícone utilizado tanto pelo ícone
-    /// embutido no executável (ApplicationIcon, no .csproj)
-    /// quanto pelo ícone exibido na bandeja do Windows.
-    /// </summary>
-    private const string TrayIconFileName =
-        "ChatGPT-Image-26-de-set.-de-2026_-20_43_10.ico";
-
     /// <summary>
     /// Ícone do DockApp exibido na área de notificação
     /// (bandeja do Windows).
@@ -260,13 +252,6 @@ public partial class App : Application
         // Cria o ícone que será exibido na bandeja do Windows.
         _trayIcon = new NotifyIcon
         {
-            // Carrega o ícone personalizado do DockApp.
-            //
-            // LoadTrayIcon() resolve o caminho de forma robusta
-            // (independente do diretório de trabalho do processo)
-            // e nunca lança exceção — em caso de falha, retorna
-            // um ícone padrão do sistema. Ver LoadTrayIcon() para
-            // detalhes.
             Icon = LoadTrayIcon(),
 
             // Torna o ícone visível na bandeja do Windows.
@@ -291,45 +276,14 @@ public partial class App : Application
         _trayIcon.DoubleClick += (_, _) => _mainWindow?.ShowDock();
     }
 
-    /// <summary>
-    /// Carrega o ícone utilizado na bandeja do Windows.
-    ///
-    /// O caminho é resolvido a partir de
-    /// <see cref="AppContext.BaseDirectory"/> — a pasta real onde
-    /// o executável do DockApp está instalado — em vez de um
-    /// caminho relativo simples.
-    ///
-    /// Um caminho relativo simples depende do diretório de trabalho
-    /// (CWD) do processo no momento em que ele é iniciado. Quando
-    /// o DockApp é aberto manualmente (duplo clique no .exe), o
-    /// Windows normalmente define o CWD como a própria pasta do
-    /// executável. Porém, quando o DockApp é iniciado automaticamente
-    /// pelo Windows (através da entrada configurada em
-    /// HKCU\...\Run por <see cref="Services.StartupService"/>), esse
-    /// CWD pode ser diferente — fazendo com que o caminho relativo
-    /// simplesmente não seja encontrado, e o carregamento do ícone
-    /// falhe justamente nesse cenário.
-    ///
-    /// Se, mesmo assim, o ícone não puder ser carregado por qualquer
-    /// outro motivo, um ícone padrão do sistema é utilizado como
-    /// último recurso — a falha em carregar o .ico personalizado
-    /// nunca deve impedir a bandeja (e, por consequência, o
-    /// DockApp inteiro) de continuar funcionando.
-    /// </summary>
-    /// <returns>
-    /// O ícone personalizado do DockApp, ou um ícone padrão
-    /// do sistema em caso de falha.
-    /// </returns>
     private static System.Drawing.Icon LoadTrayIcon()
     {
         try
         {
-            var iconPath =
-                Path.Combine(
-                    AppContext.BaseDirectory,
-                    TrayIconFileName);
-
-            return new System.Drawing.Icon(iconPath);
+            using var stream = typeof(App).Assembly.GetManifestResourceStream("DockApp.TrayIcon.ico")
+                ?? throw new InvalidOperationException("Ícone da bandeja ausente nos recursos do aplicativo.");
+            using var icon = new System.Drawing.Icon(stream);
+            return (System.Drawing.Icon)icon.Clone();
         }
         catch (Exception ex)
         {

@@ -461,77 +461,33 @@
                         <Border Style="{StaticResource CardStyle}" Margin="0,0,0,12">
                             <StackPanel>
                                 <TextBlock Text="Perfis de cor e movimento" Style="{StaticResource SectionTitle}" Margin="0,0,0,14" />
-                                <UniformGrid Columns="3">
-                                    <Button Tag="Graphite" Click="ApplyProfile_Click" Cursor="Hand" Margin="0,0,8,0" Height="54" AutomationProperties.Name="Grafite">
-                                        <Button.Template>
-                                            <ControlTemplate TargetType="Button">
-                                                <Border x:Name="Tile" CornerRadius="8" BorderBrush="#5D5E67" BorderThickness="1" Padding="12,0">
-                                                    <Border.Background>
-                                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                                            <GradientStop Color="#424751" Offset="0" />
-                                                            <GradientStop Color="#17181A" Offset="1" />
-                                                        </LinearGradientBrush>
-                                                    </Border.Background>
-                                                    <TextBlock Text="Grafite" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="White" />
-                                                </Border>
-                                                <ControlTemplate.Triggers>
-                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                        <Setter TargetName="Tile" Property="BorderBrush" Value="White" />
-                                                    </Trigger>
-                                                    <Trigger Property="IsKeyboardFocused" Value="True">
-                                                        <Setter TargetName="Tile" Property="BorderBrush" Value="White" />
-                                                    </Trigger>
-                                                </ControlTemplate.Triggers>
-                                            </ControlTemplate>
-                                        </Button.Template>
-                                    </Button>
-                                    <Button Tag="Aurora" Click="ApplyProfile_Click" Cursor="Hand" Margin="0,0,8,0" Height="54" AutomationProperties.Name="Aurora">
-                                        <Button.Template>
-                                            <ControlTemplate TargetType="Button">
-                                                <Border x:Name="Tile" CornerRadius="8" BorderBrush="#5D5E67" BorderThickness="1" Padding="12,0">
-                                                    <Border.Background>
-                                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                                            <GradientStop Color="#236373" Offset="0" />
-                                                            <GradientStop Color="#513F76" Offset="1" />
-                                                        </LinearGradientBrush>
-                                                    </Border.Background>
-                                                    <TextBlock Text="Aurora" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="White" />
-                                                </Border>
-                                                <ControlTemplate.Triggers>
-                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                        <Setter TargetName="Tile" Property="BorderBrush" Value="White" />
-                                                    </Trigger>
-                                                    <Trigger Property="IsKeyboardFocused" Value="True">
-                                                        <Setter TargetName="Tile" Property="BorderBrush" Value="White" />
-                                                    </Trigger>
-                                                </ControlTemplate.Triggers>
-                                            </ControlTemplate>
-                                        </Button.Template>
-                                    </Button>
-                                    <Button Tag="Amber" Click="ApplyProfile_Click" Cursor="Hand" Margin="0,0,8,0" Height="54" AutomationProperties.Name="Âmbar">
-                                        <Button.Template>
-                                            <ControlTemplate TargetType="Button">
-                                                <Border x:Name="Tile" CornerRadius="8" BorderBrush="#5D5E67" BorderThickness="1" Padding="12,0">
-                                                    <Border.Background>
-                                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                                            <GradientStop Color="#774830" Offset="0" />
-                                                            <GradientStop Color="#48343A" Offset="1" />
-                                                        </LinearGradientBrush>
-                                                    </Border.Background>
-                                                    <TextBlock Text="Âmbar" VerticalAlignment="Center" FontWeight="SemiBold" Foreground="White" />
-                                                </Border>
-                                                <ControlTemplate.Triggers>
-                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                        <Setter TargetName="Tile" Property="BorderBrush" Value="White" />
-                                                    </Trigger>
-                                                    <Trigger Property="IsKeyboardFocused" Value="True">
-                                                        <Setter TargetName="Tile" Property="BorderBrush" Value="White" />
-                                                    </Trigger>
-                                                </ControlTemplate.Triggers>
-                                            </ControlTemplate>
-                                        </Button.Template>
-                                    </Button>
-                                </UniformGrid>
+                                <DockPanel>
+                                    <Button DockPanel.Dock="Right" Content="Aplicar perfil" Click="ApplyProfile_Click"
+                                            Width="118" Margin="12,0,0,0" Style="{StaticResource SecondaryButton}"/>
+                                    <ComboBox x:Name="ProfilePicker" SelectedIndex="0" MaxDropDownHeight="320"
+                                              HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center"
+                                              AutomationProperties.Name="Perfis de cor e movimento">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <DockPanel Margin="5,3">
+                                                    <Border Width="44" Height="28" Margin="0,0,10,0" CornerRadius="5"
+                                                            BorderThickness="1" BorderBrush="{Binding Border}">
+                                                        <Border.Background>
+                                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                                <GradientStop Offset="0" Color="{Binding Start}"/>
+                                                                <GradientStop Offset="1" Color="{Binding SwatchEnd}"/>
+                                                            </LinearGradientBrush>
+                                                        </Border.Background>
+                                                    </Border>
+                                                    <StackPanel>
+                                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                                                        <TextBlock Text="{Binding MotionDescription}" FontSize="11"/>
+                                                    </StackPanel>
+                                                </DockPanel>
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                </DockPanel>
                             </StackPanel>
                         </Border>
                         <Grid>

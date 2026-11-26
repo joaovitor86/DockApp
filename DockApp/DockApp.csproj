@@ -12,7 +12,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="ChatGPT-Image-26-de-set.-de-2026_-20_43_10.ico" />
+    <EmbeddedResource Include="$(ApplicationIcon)" LogicalName="DockApp.TrayIcon.ico" />
   </ItemGroup>
 
 </Project>
